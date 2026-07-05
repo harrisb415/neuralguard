@@ -14,9 +14,11 @@
 
 #include "core/db.h"
 #include "core/dns.h"
+#include "core/enforcer.h"
 #include "core/habit.h"
 #include "core/identity.h"
 #include "core/util.h"
+#include "ngd/enforce.h"
 #include "ngd/recorder.h"
 
 #include <windows.h>
@@ -33,6 +35,7 @@
 namespace {
 
 ng::Recorder* g_recorder = nullptr;
+ng::EnforceDaemon* g_enforce = nullptr;
 
 bool IsElevated() {
     HANDLE tok = nullptr;
@@ -56,6 +59,8 @@ void PrintUsage() {
         "  ngd compact [db]              Decay habit counts to now and evict faded ones.\n"
         "  ngd novelty [db]              Rank habits by novelty (rare + recently seen).\n"
         "  ngd promote [db]              Show stable vs provisional (app, port) pairs.\n"
+        "  ngd enforce [db] [seconds]    LIVE: permit the stable baseline, default-deny the\n"
+        "                                rest, and prompt the tray on novel connections.\n"
         "  ngd -h | --help | /?          Show this help.\n\n"
         "Recording requires an elevated (Administrator) prompt.\n");
 }
@@ -63,6 +68,7 @@ void PrintUsage() {
 BOOL WINAPI CtrlHandler(DWORD type) {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) {
         if (g_recorder) g_recorder->stop();
+        if (g_enforce) g_enforce->stop();
         return TRUE;
     }
     return FALSE;
@@ -341,22 +347,24 @@ int main(int argc, char** argv) {
     int seconds = 0;  // 0 = run until Ctrl+C
     if (argc >= 2 && (strcmp(argv[1], "dump") == 0 || strcmp(argv[1], "record") == 0 ||
                       strcmp(argv[1], "digest") == 0 || strcmp(argv[1], "compact") == 0 ||
-                      strcmp(argv[1], "novelty") == 0 || strcmp(argv[1], "promote") == 0)) {
+                      strcmp(argv[1], "novelty") == 0 || strcmp(argv[1], "promote") == 0 ||
+                      strcmp(argv[1], "enforce") == 0)) {
         mode = argv[1];
         if (argc >= 3) dbPath = argv[2];
-        if (argc >= 4 && strcmp(mode, "record") == 0) seconds = atoi(argv[3]);
+        if (argc >= 4 && (strcmp(mode, "record") == 0 || strcmp(mode, "enforce") == 0))
+            seconds = atoi(argv[3]);
     } else if (argc >= 2) {
         dbPath = argv[1];
         if (argc >= 3) seconds = atoi(argv[2]);
     }
 
-    const bool recording = strcmp(mode, "record") == 0;
-    if (recording && !IsElevated()) {
+    const bool needsAdmin = strcmp(mode, "record") == 0 || strcmp(mode, "enforce") == 0;
+    if (needsAdmin && !IsElevated()) {
         fprintf(stderr,
             "NeuralGuard ngd must be run as Administrator.\n"
-            "Recording uses the Windows Filtering Platform and ETW, which require an\n"
+            "record/enforce use the Windows Filtering Platform and ETW, which require an\n"
             "elevated token. Right-click PowerShell -> Run as administrator, then run\n"
-            "  .\\ngd\nagain. (The 'dump' command works without elevation.)\n");
+            "  .\\ngd\nagain. (dump/digest/novelty/promote work without elevation.)\n");
         return 1;
     }
 
@@ -368,6 +376,21 @@ int main(int argc, char** argv) {
     if (strcmp(mode, "compact") == 0) return RunCompact(db);
     if (strcmp(mode, "novelty") == 0) return RunNovelty(db);
     if (strcmp(mode, "promote") == 0) return RunPromote(db);
+
+    if (strcmp(mode, "enforce") == 0) {
+        ng::IdentityResolver resolver(db);
+        resolver.init();
+        ng::DnsWatcher dns;
+        if (!dns.start())
+            fprintf(stderr, "warning: DNS correlation disabled (ETW session failed)\n");
+        ng::Enforcer enf;
+        ng::EnforceDaemon daemon(db, resolver, dns, enf);
+        g_enforce = &daemon;
+        SetConsoleCtrlHandler(CtrlHandler, TRUE);
+        bool ok = daemon.run(seconds);
+        dns.stop();
+        return ok ? 0 : 1;
+    }
 
     ng::IdentityResolver resolver(db);
     resolver.init();

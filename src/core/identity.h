@@ -19,6 +19,7 @@ struct Identity {
     long long   id = -1;   // process_identity row id (-1 if unresolved)
     std::string key;
     std::string label;
+    std::string path;      // normalized C:\... image path (for WFP app-id permits)
 };
 
 class IdentityResolver {

@@ -32,7 +32,8 @@ add_library(ngcore STATIC
   src/core/identity.cpp
   src/core/dns.cpp
   src/core/habit.cpp
-  src/core/enforcer.cpp)
+  src/core/enforcer.cpp
+  src/core/prompt.cpp)
 target_include_directories(ngcore PUBLIC src)
 target_compile_definitions(ngcore PUBLIC ${NG_DEFS})
 target_compile_options(ngcore PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
@@ -47,7 +48,7 @@ target_compile_options(ngmon PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
 target_link_libraries(ngmon PRIVATE fwpuclnt ws2_32)
 
 # --- ngd (Phase 1): WFP net-event recorder ----------------------------------
-add_executable(ngd src/ngd/main.cpp src/ngd/recorder.cpp)
+add_executable(ngd src/ngd/main.cpp src/ngd/recorder.cpp src/ngd/enforce.cpp)
 target_compile_definitions(ngd PRIVATE ${NG_DEFS})
 target_compile_options(ngd PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
 target_link_libraries(ngd PRIVATE ngcore fwpuclnt ws2_32)

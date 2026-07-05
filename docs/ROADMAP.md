@@ -112,10 +112,12 @@ It's safe — it's read-only. Stop when a normal day is ~95% covered by learned 
   always/once/Block dialog) and enacts the answer (a permit on Allow). Pipe
   verified reachable; click-through is interactive. Remaining: true inline-button
   toasts (COM activator) + a live mode indicator.
-- ⬜ **Full block-notify-retry**: `ngd` runs as the live enforcer (holds
-  default-deny + stable permits), watches WFP drops, and fires `notify`
-  automatically on a novel/provisional connection. (The prompt mechanism above is
-  done; this is the enforcement-daemon integration that triggers it.)
+- ✅ **Automatic block-notify-retry** — `ngd enforce [db] [seconds]` is the live
+  enforcer: installs stable baseline permits + default-deny, subscribes to WFP net
+  events, and on a novel public drop (deduped) prompts the tray off the callback
+  thread; Allow → permit (retry succeeds), else stays blocked; auto-reverts on
+  stop. Verified headless (baseline permits / novel blocked / drop-detected /
+  reverted); live toast click-through is interactive.
 - ⬜ **Complete config UI** (separate, larger): a dashboard to view/edit rules,
   browse the baseline, toggle Learn↔Enforce, manage the allow-list, tune autonomy
   — design earmarks a WebView2 window fed by an `ngd` local API. Tray today is

@@ -79,6 +79,7 @@ Identity IdentityResolver::resolve(const std::string& devPath) {
     std::string now = util::IsoNow();
 
     Identity idn;
+    idn.path = dos;
     // Stable habit key: prefer signer thumbprint (survives binary updates), then
     // content hash, then the raw path as a last resort.
     if (isSigned)          idn.key = "sig:" + thumb;
