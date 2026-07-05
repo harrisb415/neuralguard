@@ -127,7 +127,10 @@ blocks and a manageable prompt rate.
 - ✅ Novelty score — `ngd novelty` ranks habits by `0.6*rarity + 0.4*newness`
   (rare + recently first seen). Also excluded loopback dests from habits.
   The auto-allow-low-novelty *action* still needs the live decision path (2c tray).
-- ⬜ Promote stable keys to explicit permit rules (ties into enforce-baseline).
+- ✅ Promotion — `ngd promote` classifies (app, port) as stable (≥ N distinct
+  connections) vs provisional; `enforce-baseline` now permits only stable pairs
+  (default ≥ 3), so one-offs aren't silently trusted (84 → 16 permits on the live
+  baseline). Provisional pairs fall to default-deny → a prompt once the tray lands.
 - ⬜ Configurable autonomy levels + weekly digest delivery.
 
 ## Phase 3 — Habit scoring & autonomy

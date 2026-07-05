@@ -46,9 +46,10 @@ void PrintUsage() {
         "  ngctl allow <ipv4> [port]   Add a permit filter for a remote IPv4[:port] (TCP).\n"
         "  ngctl enforce <seconds>     Default-deny outbound IPv4 for <seconds>, then\n"
         "                              auto-revert (Tier-0 exempt; inbound untouched).\n"
-        "  ngctl enforce-baseline <db> <seconds>\n"
-        "                              Permit every observed (app, port) from <db>, then\n"
-        "                              default-deny the rest for <seconds>, then revert.\n"
+        "  ngctl enforce-baseline <db> <seconds> [min-conns]\n"
+        "                              Permit STABLE (app, port) pairs from <db> (seen on\n"
+        "                              >= min-conns connections, default 3), default-deny\n"
+        "                              the rest for <seconds>, then auto-revert.\n"
         "  ngctl -h | --help | /?      This help.\n\n"
         "Requires an elevated (Administrator) prompt.\n");
 }
@@ -132,25 +133,33 @@ int main(int argc, char** argv) {
     }
     if (strcmp(cmd, "enforce-baseline") == 0) {
         if (argc < 4) {
-            fprintf(stderr, "usage: ngctl enforce-baseline <db> <seconds>\n");
+            fprintf(stderr, "usage: ngctl enforce-baseline <db> <seconds> [min-connections]\n");
             return 2;
         }
         const char* dbPath = argv[2];
         int secs = atoi(argv[3]);
+        int minConns = (argc >= 5) ? atoi(argv[4]) : 3;  // stability threshold
         if (secs <= 0) { fprintf(stderr, "seconds must be > 0 (auto-reverts)\n"); return 2; }
+        if (minConns < 1) minConns = 1;
 
         ng::Db db;
         if (!db.open(dbPath)) return 1;
         ng::Enforcer enf;
         if (!enf.open()) return 1;
 
-        // Permit each distinct (application, remote port) we've observed allowed.
+        // Permit only STABLE (application, remote port) pairs - ones seen on at
+        // least min-connections distinct connections. Provisional (rarely seen)
+        // pairs are left to default-deny (a prompt, once the tray flow lands).
         sqlite3_stmt* s = nullptr;
         sqlite3_prepare_v2(db.handle(),
-            "SELECT DISTINCT pi.image_path, fe.protocol, fe.remote_port"
+            "SELECT pi.image_path, fe.protocol, fe.remote_port,"
+            " COUNT(DISTINCT fe.local_port || '|' || fe.remote_addr) AS conns"
             " FROM flow_events fe JOIN process_identity pi ON fe.image_id = pi.id"
-            " WHERE fe.remote_port > 0 AND pi.image_path LIKE '_:\\%'"
-            "   AND fe.verdict IN ('ALLOW','CAPALLOW');", -1, &s, nullptr);
+            " WHERE fe.remote_port > 0 AND fe.remote_port < 49152 AND pi.image_path LIKE '_:\\%'"
+            "   AND fe.verdict IN ('ALLOW','CAPALLOW')"
+            " GROUP BY pi.image_path, fe.protocol, fe.remote_port"
+            " HAVING conns >= ?;", -1, &s, nullptr);
+        sqlite3_bind_int(s, 1, minConns);
         int permits = 0;
         while (sqlite3_step(s) == SQLITE_ROW) {
             const char* path = (const char*)sqlite3_column_text(s, 0);
@@ -163,8 +172,8 @@ int main(int argc, char** argv) {
         sqlite3_finalize(s);
 
         if (!enf.enableDefaultDeny()) { enf.panic(); return 1; }
-        printf("ENFORCE-BASELINE: %d app permits + default-deny (%d filters total).\n",
-               permits, enf.countRules());
+        printf("ENFORCE-BASELINE: %d stable app permits (>=%d conns) + default-deny"
+               " (%d filters total).\n", permits, minConns, enf.countRules());
         printf("Auto-reverting in %d s...\n", secs);
         fflush(stdout);
         Sleep((DWORD)secs * 1000);

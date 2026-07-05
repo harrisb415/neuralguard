@@ -55,6 +55,7 @@ void PrintUsage() {
         "  ngd digest [db]               A 'what's new' digest of the learned baseline.\n"
         "  ngd compact [db]              Decay habit counts to now and evict faded ones.\n"
         "  ngd novelty [db]              Rank habits by novelty (rare + recently seen).\n"
+        "  ngd promote [db]              Show stable vs provisional (app, port) pairs.\n"
         "  ngd -h | --help | /?          Show this help.\n\n"
         "Recording requires an elevated (Administrator) prompt.\n");
 }
@@ -129,6 +130,53 @@ int RunDigest(ng::Db& db) {
         "SELECT count(DISTINCT dest), process_label FROM habits"
         " GROUP BY process_label ORDER BY 1 DESC LIMIT 10;");
 
+    return 0;
+}
+
+// Promotion report: classify each observed (app, port) as STABLE (seen on
+// enough distinct connections to auto-permit) vs PROVISIONAL (rare/novel - would
+// warrant a prompt rather than a silent permit). Distinct connections are counted
+// by (local_port, remote_addr) since flow_events holds several rows per
+// connection. Read-only. See docs/DESIGN.md section 5.
+int RunPromote(ng::Db& db) {
+    const int kMinConns = 3;
+    sqlite3* h = db.handle();
+    sqlite3_stmt* s = nullptr;
+    sqlite3_prepare_v2(h,
+        "SELECT pi.image_path, fe.remote_port,"
+        " COUNT(DISTINCT fe.local_port || '|' || fe.remote_addr) AS conns"
+        " FROM flow_events fe JOIN process_identity pi ON fe.image_id = pi.id"
+        " WHERE fe.remote_port > 0 AND fe.remote_port < 49152 AND pi.image_path LIKE '_:\\%'"
+        "   AND fe.verdict IN ('ALLOW','CAPALLOW')"
+        " GROUP BY pi.image_path, fe.protocol, fe.remote_port"
+        " ORDER BY conns DESC;", -1, &s, nullptr);
+
+    int stable = 0, provisional = 0;
+    std::vector<std::string> provList;
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        std::string path = (const char*)sqlite3_column_text(s, 0);
+        int port = sqlite3_column_int(s, 1);
+        int conns = sqlite3_column_int(s, 2);
+        if (conns >= kMinConns) {
+            ++stable;
+        } else {
+            ++provisional;
+            size_t p = path.find_last_of('\\');
+            std::string base = (p == std::string::npos) ? path : path.substr(p + 1);
+            if (provList.size() < 25)
+                provList.push_back(base + ":" + std::to_string(port) +
+                                   " (" + std::to_string(conns) + ")");
+        }
+    }
+    sqlite3_finalize(s);
+
+    printf("=== promotion (>= %d distinct connections = stable) ===\n", kMinConns);
+    printf("stable (would auto-permit):    %d (app, port) pairs\n", stable);
+    printf("provisional (would prompt):    %d\n", provisional);
+    if (!provList.empty()) {
+        printf("\n-- provisional (rare) --\n");
+        for (const std::string& v : provList) printf("  %s\n", v.c_str());
+    }
     return 0;
 }
 
@@ -293,7 +341,7 @@ int main(int argc, char** argv) {
     int seconds = 0;  // 0 = run until Ctrl+C
     if (argc >= 2 && (strcmp(argv[1], "dump") == 0 || strcmp(argv[1], "record") == 0 ||
                       strcmp(argv[1], "digest") == 0 || strcmp(argv[1], "compact") == 0 ||
-                      strcmp(argv[1], "novelty") == 0)) {
+                      strcmp(argv[1], "novelty") == 0 || strcmp(argv[1], "promote") == 0)) {
         mode = argv[1];
         if (argc >= 3) dbPath = argv[2];
         if (argc >= 4 && strcmp(mode, "record") == 0) seconds = atoi(argv[3]);
@@ -319,6 +367,7 @@ int main(int argc, char** argv) {
     if (strcmp(mode, "digest") == 0) return RunDigest(db);
     if (strcmp(mode, "compact") == 0) return RunCompact(db);
     if (strcmp(mode, "novelty") == 0) return RunNovelty(db);
+    if (strcmp(mode, "promote") == 0) return RunPromote(db);
 
     ng::IdentityResolver resolver(db);
     resolver.init();
