@@ -29,6 +29,28 @@ namespace {
 
 ng::Recorder* g_recorder = nullptr;
 
+bool IsElevated() {
+    HANDLE tok = nullptr;
+    if (!OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &tok)) return false;
+    TOKEN_ELEVATION elev{}; DWORD cb = 0;
+    bool elevated = GetTokenInformation(tok, TokenElevation, &elev, sizeof(elev), &cb) &&
+                    elev.TokenIsElevated;
+    CloseHandle(tok);
+    return elevated;
+}
+
+void PrintUsage() {
+    printf(
+        "NeuralGuard ngd - learning-mode WFP recorder\n\n"
+        "Usage:\n"
+        "  ngd [record] [db] [seconds]   Record WFP net events into <db>\n"
+        "                                (default ngpolicy.db). [seconds] auto-stops;\n"
+        "                                otherwise runs until Ctrl+C.\n"
+        "  ngd dump [db]                 Print the learned baseline + recent events.\n"
+        "  ngd -h | --help | /?          Show this help.\n\n"
+        "Recording requires an elevated (Administrator) prompt.\n");
+}
+
 BOOL WINAPI CtrlHandler(DWORD type) {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) {
         if (g_recorder) g_recorder->stop();
@@ -104,6 +126,14 @@ int RunDump(ng::Db& db) {
 }  // namespace
 
 int main(int argc, char** argv) {
+    if (argc >= 2) {
+        const char* a = argv[1];
+        if (strcmp(a, "-h") == 0 || strcmp(a, "--help") == 0 || strcmp(a, "/?") == 0) {
+            PrintUsage();
+            return 0;
+        }
+    }
+
     const char* mode = "record";
     const char* dbPath = "ngpolicy.db";
     int seconds = 0;  // 0 = run until Ctrl+C
@@ -116,10 +146,20 @@ int main(int argc, char** argv) {
         if (argc >= 3) seconds = atoi(argv[2]);
     }
 
+    const bool recording = strcmp(mode, "record") == 0;
+    if (recording && !IsElevated()) {
+        fprintf(stderr,
+            "NeuralGuard ngd must be run as Administrator.\n"
+            "Recording uses the Windows Filtering Platform and ETW, which require an\n"
+            "elevated token. Right-click PowerShell -> Run as administrator, then run\n"
+            "  .\\ngd\nagain. (The 'dump' command works without elevation.)\n");
+        return 1;
+    }
+
     ng::Db db;
     if (!db.open(dbPath)) return 1;
 
-    if (strcmp(mode, "dump") == 0) return RunDump(db);
+    if (!recording) return RunDump(db);
 
     ng::IdentityResolver resolver(db);
     resolver.init();
@@ -131,7 +171,7 @@ int main(int argc, char** argv) {
     g_recorder = &recorder;
     SetConsoleCtrlHandler(CtrlHandler, TRUE);
 
-    printf("ngd - recording WFP net events to %s%s\n", dbPath,
+    printf("ngd - recording to %s%s. Press Ctrl+C to stop.\n", dbPath,
            seconds > 0 ? " (timed)" : "");
     std::thread timer;
     if (seconds > 0)

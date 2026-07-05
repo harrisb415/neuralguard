@@ -128,7 +128,6 @@ bool Recorder::run() {
         return false;
     }
 
-    printf("ngd - recording WFP net events (Ctrl+C to stop)\n");
     fflush(stdout);
     WaitForSingleObject((HANDLE)stopEvent_, INFINITE);
 
