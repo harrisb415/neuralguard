@@ -44,8 +44,13 @@ the test VM (built on host via VS 2026, run on the VM over SSH).
 - ✅ Recorder — `ngd record` persists every WFP net event to `ngpolicy.db`
   (`flow_events`); `ngd dump` reads them back. SQLite vendored (amalgamation,
   no package manager); WFP helpers shared with `ngmon` via `src/common/wfp_util.h`.
-- ⬜ Process identity — normalize `\device\harddiskvolumeN\...` → `C:\...`, add
-  Authenticode signer thumbprint / image SHA-256, cache per-PID.
+- ✅ Process identity — `\device\harddiskvolumeN\...` normalized to `C:\...`,
+  image SHA-256, and Authenticode signer (embedded **and catalog**, so in-box
+  Windows binaries resolve to their Microsoft signer). De-duplicated in a
+  `process_identity` table and cached in memory.
+- ✅ Refactor — split the growing `ngd/main.cpp` into an `ngcore` static lib
+  (`db`, `identity`, `signer`, `util`) + `ngd` (`recorder`, `main`), so later
+  binaries (ngctl, service, tray backend) reuse the core.
 - ⬜ DNS correlation — consume `Microsoft-Windows-DNS-Client` ETW, map IP → domain.
 - ⬜ Identity key + decaying habit counts (see DESIGN §4–5).
 

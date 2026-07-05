@@ -23,6 +23,17 @@ if(MSVC)
   target_compile_options(sqlite3 PRIVATE /w)  # third-party: silence warnings
 endif()
 
+# --- ngcore: reusable core library (db, identity, signer, util) -------------
+# Linked by ngd today; by ngctl / the service / ngtray's backend later.
+add_library(ngcore STATIC
+  src/core/db.cpp
+  src/core/signer.cpp
+  src/core/identity.cpp)
+target_include_directories(ngcore PUBLIC src)
+target_compile_definitions(ngcore PUBLIC ${NG_DEFS})
+target_compile_options(ngcore PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
+target_link_libraries(ngcore PUBLIC sqlite3 bcrypt crypt32 wintrust)
+
 # --- ngmon (Phase 0): WFP net-event printer ---------------------------------
 add_executable(ngmon src/ngmon/main.cpp)
 target_include_directories(ngmon PRIVATE src)
@@ -30,9 +41,8 @@ target_compile_definitions(ngmon PRIVATE ${NG_DEFS})
 target_compile_options(ngmon PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
 target_link_libraries(ngmon PRIVATE fwpuclnt ws2_32)
 
-# --- ngd (Phase 1): WFP net-event recorder (SQLite) -------------------------
-add_executable(ngd src/ngd/main.cpp)
-target_include_directories(ngd PRIVATE src)
+# --- ngd (Phase 1): WFP net-event recorder ----------------------------------
+add_executable(ngd src/ngd/main.cpp src/ngd/recorder.cpp)
 target_compile_definitions(ngd PRIVATE ${NG_DEFS})
 target_compile_options(ngd PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
-target_link_libraries(ngd PRIVATE sqlite3 fwpuclnt ws2_32)
+target_link_libraries(ngd PRIVATE ngcore fwpuclnt ws2_32)
