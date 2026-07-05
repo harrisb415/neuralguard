@@ -40,6 +40,15 @@ the test VM (built on host via VS 2026, run on the VM over SSH).
   habit counts with decay.
 - `ngctl log` / `ngctl rules` to inspect what's being learned.
 
+**Progress:**
+- ✅ Recorder — `ngd record` persists every WFP net event to `ngpolicy.db`
+  (`flow_events`); `ngd dump` reads them back. SQLite vendored (amalgamation,
+  no package manager); WFP helpers shared with `ngmon` via `src/common/wfp_util.h`.
+- ⬜ Process identity — normalize `\device\harddiskvolumeN\...` → `C:\...`, add
+  Authenticode signer thumbprint / image SHA-256, cache per-PID.
+- ⬜ DNS correlation — consume `Microsoft-Windows-DNS-Client` ETW, map IP → domain.
+- ⬜ Identity key + decaying habit counts (see DESIGN §4–5).
+
 **Gate to next phase:** run on the physical machine for a few weeks of normal use.
 It's safe — it's read-only. Stop when a normal day is ~95% covered by learned keys
 (watch the "novel connections per day" curve flatten).

@@ -6,10 +6,10 @@ NeuralGuard watches how *you* use the network, learns your normal, and quietly
 blocks the stuff that doesn't fit. It is designed to be built and run by one
 person on their own machine, not by a team shipping a signed kernel product.
 
-> **Status:** Phase 0 complete. `ngmon` — a user-mode WFP net-event monitor —
-> builds on the host and streams live connections with process attribution on the
-> test VM (allow/drop, 5-tuple, image path, user SID). Phase 1 (learning mode:
-> persist a baseline to SQLite) is next. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> **Status:** Phase 1 in progress. `ngd` records WFP net events to SQLite
+> (`flow_events`), verified on the test VM; `ngmon` remains the live printer.
+> Still to come in Phase 1: process-identity normalization + hashing, DNS-to-IP
+> correlation, and the decaying habit table. See [`docs/ROADMAP.md`](docs/ROADMAP.md).
 
 ---
 
