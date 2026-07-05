@@ -21,10 +21,14 @@
 
 #include <windows.h>
 
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <thread>
+#include <vector>
 
 namespace {
 
@@ -50,6 +54,7 @@ void PrintUsage() {
         "  ngd dump [db]                 Print the learned baseline + recent events.\n"
         "  ngd digest [db]               A 'what's new' digest of the learned baseline.\n"
         "  ngd compact [db]              Decay habit counts to now and evict faded ones.\n"
+        "  ngd novelty [db]              Rank habits by novelty (rare + recently seen).\n"
         "  ngd -h | --help | /?          Show this help.\n\n"
         "Recording requires an elevated (Administrator) prompt.\n");
 }
@@ -124,6 +129,51 @@ int RunDigest(ng::Db& db) {
         "SELECT count(DISTINCT dest), process_label FROM habits"
         " GROUP BY process_label ORDER BY 1 DESC LIMIT 10;");
 
+    return 0;
+}
+
+// Novelty score for the learned baseline. A habit is "novel" (surprising) when
+// it is rare AND was first seen recently - exactly the connections a firewall
+// should scrutinize. novelty = 0.6*rarity + 0.4*newness, in [0,1]. This is the
+// signal that will later drive auto-allow of low-novelty connections (Phase 3).
+int RunNovelty(ng::Db& db) {
+    sqlite3* h = db.handle();
+    FILETIME ft; GetSystemTimeAsFileTime(&ft);
+    double now = ng::util::UnixEpoch(ft);
+
+    struct Row { double score, count; std::string label, dest; int port; };
+    std::vector<Row> rows;
+
+    sqlite3_stmt* s = nullptr;
+    sqlite3_prepare_v2(h,
+        "SELECT process_label, dest, remote_port, count, first_seen FROM habits;",
+        -1, &s, nullptr);
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        double count = sqlite3_column_double(s, 3);
+        const char* fs = (const char*)sqlite3_column_text(s, 4);
+        double firstEpoch = fs ? ng::util::EpochFromIso(fs) : 0;
+        double ageDays = firstEpoch > 0 ? (now - firstEpoch) / 86400.0 : 999;
+        double rarity = 1.0 / (1.0 + count);
+        double newness = std::exp(-ageDays / 7.0);   // decays over ~a week
+        double score = 0.6 * rarity + 0.4 * newness;
+        rows.push_back({score, count,
+                        (const char*)sqlite3_column_text(s, 0),
+                        (const char*)sqlite3_column_text(s, 1),
+                        sqlite3_column_int(s, 2)});
+    }
+    sqlite3_finalize(s);
+
+    std::sort(rows.begin(), rows.end(),
+              [](const Row& a, const Row& b) { return a.score > b.score; });
+
+    printf("=== most novel habits (rare + recently first seen) ===\n");
+    printf("score  count  app -> dest:port\n");
+    int n = 0;
+    for (const Row& r : rows) {
+        if (n++ >= 25) break;
+        printf("%.2f   %5.1f  %s -> %s:%d\n", r.score, r.count,
+               r.label.c_str(), r.dest.c_str(), r.port);
+    }
     return 0;
 }
 
@@ -242,7 +292,8 @@ int main(int argc, char** argv) {
     const char* dbPath = "ngpolicy.db";
     int seconds = 0;  // 0 = run until Ctrl+C
     if (argc >= 2 && (strcmp(argv[1], "dump") == 0 || strcmp(argv[1], "record") == 0 ||
-                      strcmp(argv[1], "digest") == 0 || strcmp(argv[1], "compact") == 0)) {
+                      strcmp(argv[1], "digest") == 0 || strcmp(argv[1], "compact") == 0 ||
+                      strcmp(argv[1], "novelty") == 0)) {
         mode = argv[1];
         if (argc >= 3) dbPath = argv[2];
         if (argc >= 4 && strcmp(mode, "record") == 0) seconds = atoi(argv[3]);
@@ -267,6 +318,7 @@ int main(int argc, char** argv) {
     if (strcmp(mode, "dump") == 0) return RunDump(db);
     if (strcmp(mode, "digest") == 0) return RunDigest(db);
     if (strcmp(mode, "compact") == 0) return RunCompact(db);
+    if (strcmp(mode, "novelty") == 0) return RunNovelty(db);
 
     ng::IdentityResolver resolver(db);
     resolver.init();

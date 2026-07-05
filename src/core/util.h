@@ -56,4 +56,17 @@ inline double UnixEpoch(const FILETIME& ft) {
     return (double)(u.QuadPart - 116444736000000000ULL) / 1.0e7;
 }
 
+// Parse an ISO-8601 "YYYY-MM-DDThh:mm:ss[...]" (our stored form) to Unix epoch
+// seconds. Ignores fractional seconds and the trailing 'Z'. 0 on parse failure.
+inline double EpochFromIso(const std::string& s) {
+    int y = 0, mo = 0, d = 0, h = 0, mi = 0, se = 0;
+    if (sscanf_s(s.c_str(), "%d-%d-%dT%d:%d:%d", &y, &mo, &d, &h, &mi, &se) < 6) return 0;
+    SYSTEMTIME st{};
+    st.wYear = (WORD)y; st.wMonth = (WORD)mo; st.wDay = (WORD)d;
+    st.wHour = (WORD)h; st.wMinute = (WORD)mi; st.wSecond = (WORD)se;
+    FILETIME ft{};
+    if (!SystemTimeToFileTime(&st, &ft)) return 0;
+    return UnixEpoch(ft);
+}
+
 }  // namespace ng::util

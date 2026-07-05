@@ -65,9 +65,12 @@ void Recorder::handleEvent(const void* evOpaque) {
     const bool isClassify = (strcmp(verdict, "ALLOW") == 0 || strcmp(verdict, "DROP") == 0);
     // Skip ephemeral remote ports (>= 49152): those are the peer's random port on
     // an INBOUND connection, which would otherwise create one junk habit each. A
-    // habit is about an outbound *service* port.
+    // habit is about an outbound *service* port. Also skip loopback destinations -
+    // internal IPC (e.g. a browser talking to itself), always Tier-0 exempt anyway.
+    const bool isLoopback = remote.rfind("127.", 0) == 0 || remote == "::1";
     const bool realRemote = hasRPort && h->remotePort > 0 && h->remotePort < 49152 &&
-                            !remote.empty() && remote != "0.0.0.0" && remote != "::";
+                            !remote.empty() && remote != "0.0.0.0" && remote != "::" &&
+                            !isLoopback;
     if (isClassify && realRemote && idn.id >= 0) {
         std::string dest = domain.empty() ? remote : domain;
         SYSTEMTIME st{}; FileTimeToSystemTime(&h->timeStamp, &st);

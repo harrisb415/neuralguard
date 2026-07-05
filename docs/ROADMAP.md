@@ -121,7 +121,9 @@ blocks and a manageable prompt rate.
   ports).
 - ✅ Nightly compaction — `ngd compact` decays every habit's count to now and
   evicts faded ones (< 0.1). SQLite math functions enabled; DB `busy_timeout` set.
-- ⬜ Novelty score (recency + time-of-day + fan-out) → auto-allow low-novelty.
+- ✅ Novelty score — `ngd novelty` ranks habits by `0.6*rarity + 0.4*newness`
+  (rare + recently first seen). Also excluded loopback dests from habits.
+  The auto-allow-low-novelty *action* still needs the live decision path (2c tray).
 - ⬜ Promote stable keys to explicit permit rules (ties into enforce-baseline).
 - ⬜ Configurable autonomy levels + weekly digest delivery.
 
