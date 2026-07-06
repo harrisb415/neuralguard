@@ -32,9 +32,10 @@ void RunElevated(const wchar_t* tool, const wchar_t* sub) {
     std::wstring dir = path; size_t i = dir.find_last_of(L"\\/");
     dir = (i == std::wstring::npos) ? L"." : dir.substr(0, i);
     std::wstring args = L"/k \"\"" + dir + L"\\" + tool + L"\" " + sub + L"\"";
-    // Run with the exe's folder as CWD so a relative "ngpolicy.db" resolves to
-    // the same DB the dashboard reads (ExeDir\ngpolicy.db).
-    ShellExecuteW(nullptr, L"runas", L"cmd.exe", args.c_str(), dir.c_str(), SW_SHOWNORMAL);
+    // Tray is elevated (requireAdministrator), so children inherit the token -
+    // "open", not "runas": no per-action UAC. CWD = exe folder so a relative
+    // "ngpolicy.db" resolves to the DB the dashboard reads.
+    ShellExecuteW(nullptr, L"open", L"cmd.exe", args.c_str(), dir.c_str(), SW_SHOWNORMAL);
 }
 
 std::wstring ExeDir() {

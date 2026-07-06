@@ -38,7 +38,8 @@ std::wstring ExeDir() {
 void RunCtl(const wchar_t* sub) {
     std::wstring dir = ExeDir();
     std::wstring args = L"/k \"\"" + dir + L"\\ngctl.exe\" " + sub + L"\"";
-    ShellExecuteW(nullptr, L"runas", L"cmd.exe", args.c_str(), dir.c_str(), SW_SHOWNORMAL);
+    // Tray runs elevated, so the child inherits the token - "open", no extra UAC.
+    ShellExecuteW(nullptr, L"open", L"cmd.exe", args.c_str(), dir.c_str(), SW_SHOWNORMAL);
 }
 
 std::wstring Widen(const std::string& s) {
