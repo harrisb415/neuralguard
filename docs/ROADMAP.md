@@ -118,12 +118,14 @@ It's safe — it's read-only. Stop when a normal day is ~95% covered by learned 
   thread; Allow → permit (retry succeeds), else stays blocked; auto-reverts on
   stop. Verified headless (baseline permits / novel blocked / drop-detected /
   reverted); live toast click-through is interactive.
-- ◐ **Config UI (WebView2 dashboard)** — `ngtray` → Dashboard opens a WebView2
-  window (static loader vendored, no extra DLL): dark-theme HTML showing baseline
-  stats + top talkers, with Enforce / Learn / Panic / Refresh (shell ngd/ngctl via
-  UAC; data read from the DB via ngcore over postMessage). Builds/runs; runtime
-  present on the VM; render + clicks are interactive. Remaining: editable rules, a
-  live mode/status indicator, allow-list management, autonomy settings.
+- ◐ **Config UI (native Win32)** — WebView2 removed (user chose a native C++ app).
+  `ngtray` → Dashboard opens a native window (Common Controls): tab control +
+  ListViews (Rules, Habits from the DB) + a status-bar **live mode indicator**
+  (ngd publishes `meta.mode` = learning/enforcing/idle; dashboard polls it). All
+  panels/capabilities were requested — building in increments:
+  - ⬜ Live connection feed · rule editing · Per-app view · Decision history tabs
+  - ⬜ Settings/autonomy tab · export-import · block rules · search · timed allow
+  - ⬜ Windows service + watchdog + fail-open-on-death
 - ⬜ Watchdog + fail-open-on-death; persistent enforcement service.
 
 **Gate to next phase:** a week of daily use on the physical box with near-zero false
