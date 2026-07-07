@@ -18,6 +18,7 @@ namespace {
 
 enum { TAB_LIVE = 0, TAB_RULES = 1, TAB_HABITS = 2, TAB_COUNT = 3 };
 enum { IDB_ENFORCE = 100, IDB_LEARN, IDB_STOP, IDB_PANIC, IDB_REFRESH, IDB_COUNT_ = 5 };
+enum { IDM_BLOCK_DEST = 300, IDM_ALLOW_DEST, IDM_ALLOW_APP, IDM_BLOCK_APP, IDM_DEL_RULE };
 constexpr UINT WM_APP_LOG = WM_APP + 7;
 
 const wchar_t* kBtnLabel[IDB_COUNT_] = {L"Enforce", L"Learn", L"Stop", L"Panic", L"Refresh"};
@@ -27,6 +28,7 @@ HWND g_lv[TAB_COUNT] = {};
 HWND g_btn[IDB_COUNT_] = {};
 int  g_cur = 0;
 long long g_lastEventId = -1;
+long long g_ctxParam = 0;   // DB id of the row the context menu was opened on
 HANDLE g_child = nullptr;   // the running ngd daemon (enforce/record), if any
 
 std::wstring ExeDir() {
@@ -139,6 +141,69 @@ void SetCell(HWND lv, int row, int col, const char* u8) {
     it.pszText = const_cast<LPWSTR>(w.c_str());
     if (col == 0) ListView_InsertItem(lv, &it); else ListView_SetItem(lv, &it);
 }
+// Insert a row's first cell carrying a DB id in lParam (for right-click actions).
+void InsertRow(HWND lv, int row, const char* col0, long long param) {
+    std::wstring w = Widen(col0);
+    LVITEMW it{}; it.mask = LVIF_TEXT | LVIF_PARAM; it.iItem = row; it.iSubItem = 0;
+    it.pszText = const_cast<LPWSTR>(w.c_str()); it.lParam = (LPARAM)param;
+    ListView_InsertItem(lv, &it);
+}
+
+// ---- rule writes (dashboard edits the rules table directly, no elevation) --
+void BumpGen(sqlite3* h) {
+    sqlite3_exec(h, "UPDATE meta SET v=CAST(v AS INTEGER)+1 WHERE k='rules_gen';", nullptr, nullptr, nullptr);
+}
+// Add a rule from a live flow_event: block/allow, matching either the app (any
+// port) or the destination IP:port. ngd enforce picks it up on the gen bump.
+void AddRuleFromEvent(long long eventId, bool block, bool useApp) {
+    Db d; if (!d.open(DbPathU8().c_str())) return;
+    sqlite3_stmt* s = nullptr;
+    sqlite3_prepare_v2(d.handle(),
+        "SELECT fe.remote_addr, fe.remote_port, COALESCE(pi.image_path, fe.image_path)"
+        " FROM flow_events fe LEFT JOIN process_identity pi ON fe.image_id=pi.id WHERE fe.id=?;",
+        -1, &s, nullptr);
+    sqlite3_bind_int64(s, 1, eventId);
+    std::string ip, path; int port = 0;
+    if (sqlite3_step(s) == SQLITE_ROW) {
+        const char* a = (const char*)sqlite3_column_text(s, 0); ip = a ? a : "";
+        port = sqlite3_column_int(s, 1);
+        const char* p = (const char*)sqlite3_column_text(s, 2); path = p ? p : "";
+    }
+    sqlite3_finalize(s);
+    if (!useApp && ip.find('.') == std::string::npos) {
+        AppendLog(L"[rules] can't add: row has no IPv4 destination.\r\n"); return;
+    }
+    if (useApp && (path.size() < 3 || path[1] != ':')) {
+        AppendLog(L"[rules] can't add: no app path for this row.\r\n"); return;
+    }
+    sqlite3_stmt* ins = nullptr;
+    sqlite3_prepare_v2(d.handle(),
+        "INSERT INTO rules(action,app_path,remote_addr,remote_port,protocol,enabled,created_at)"
+        " VALUES(?,?,?,?,?,1,datetime('now'));", -1, &ins, nullptr);
+    bindText(ins, 1, block ? "block" : "permit");
+    if (useApp) {
+        bindText(ins, 2, path); sqlite3_bind_null(ins, 3);
+        sqlite3_bind_null(ins, 4); sqlite3_bind_null(ins, 5);
+    } else {
+        sqlite3_bind_null(ins, 2); bindText(ins, 3, ip);
+        sqlite3_bind_int(ins, 4, port); sqlite3_bind_int(ins, 5, 6);
+    }
+    sqlite3_step(ins);
+    sqlite3_finalize(ins);
+    BumpGen(d.handle());
+    std::wstring what = useApp ? Widen(path.c_str())
+                               : Widen(ip.c_str()) + L":" + std::to_wstring(port);
+    AppendLog((block ? L"[rules] BLOCK " : L"[rules] ALLOW ") + what + L" added (live).\r\n");
+}
+void DelRule(long long ruleId) {
+    Db d; if (!d.open(DbPathU8().c_str())) return;
+    sqlite3_stmt* s = nullptr;
+    sqlite3_prepare_v2(d.handle(), "DELETE FROM rules WHERE id=?;", -1, &s, nullptr);
+    sqlite3_bind_int64(s, 1, ruleId);
+    sqlite3_step(s); sqlite3_finalize(s);
+    BumpGen(d.handle());
+    AppendLog(L"[rules] rule deleted (live).\r\n");
+}
 
 void FillHabits(HWND lv) {
     ListView_DeleteAllItems(lv);
@@ -162,17 +227,18 @@ void FillRules(HWND lv) {
     Db d; if (!d.open(DbPathU8().c_str())) return;
     sqlite3_stmt* s = nullptr;
     sqlite3_prepare_v2(d.handle(),
-        "SELECT pi.image_path, fe.remote_port,"
-        " COUNT(DISTINCT fe.local_port || '|' || fe.remote_addr) AS c"
-        " FROM flow_events fe JOIN process_identity pi ON fe.image_id = pi.id"
-        " WHERE fe.remote_port > 0 AND fe.remote_port < 49152 AND pi.image_path LIKE '_:\\%'"
-        "   AND fe.verdict IN ('ALLOW','CAPALLOW')"
-        " GROUP BY pi.image_path, fe.remote_port HAVING c >= 3 ORDER BY c DESC;", -1, &s, nullptr);
+        "SELECT id, action, COALESCE(app_path, remote_addr, '(any)'),"
+        " COALESCE(remote_port,0), enabled, COALESCE(expires_epoch,0)"
+        " FROM rules ORDER BY id DESC;", -1, &s, nullptr);
     int row = 0;
     while (sqlite3_step(s) == SQLITE_ROW) {
-        SetCell(lv, row, 0, (const char*)sqlite3_column_text(s, 0));
-        SetCell(lv, row, 1, std::to_string(sqlite3_column_int(s, 1)).c_str());
-        SetCell(lv, row, 2, std::to_string(sqlite3_column_int(s, 2)).c_str());
+        InsertRow(lv, row, (const char*)sqlite3_column_text(s, 1), sqlite3_column_int64(s, 0));
+        SetCell(lv, row, 1, (const char*)sqlite3_column_text(s, 2));
+        int port = sqlite3_column_int(s, 3);
+        SetCell(lv, row, 2, port ? std::to_string(port).c_str() : "any");
+        std::string info = sqlite3_column_int(s, 4) ? "" : "disabled";
+        if (sqlite3_column_double(s, 5) > 0) info += info.empty() ? "timed" : ", timed";
+        SetCell(lv, row, 3, info.c_str());
         ++row;
     }
     sqlite3_finalize(s);
@@ -193,7 +259,7 @@ void PollLive() {
         const char* ts = (const char*)sqlite3_column_text(s, 1);
         std::string tm = ts ? ts : "";
         if (tm.size() >= 19) tm = tm.substr(11, 8);
-        SetCell(lv, 0, 0, tm.c_str());
+        InsertRow(lv, 0, tm.c_str(), g_lastEventId);   // lParam = flow_event id
         SetCell(lv, 0, 1, (const char*)sqlite3_column_text(s, 2));
         SetCell(lv, 0, 2, (const char*)sqlite3_column_text(s, 3));
         SetCell(lv, 0, 3, (const char*)sqlite3_column_text(s, 4));
@@ -246,6 +312,29 @@ LRESULT CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
         case WM_NOTIFY: {
             LPNMHDR n = (LPNMHDR)l;
             if (n->hwndFrom == g_tabs && n->code == TCN_SELCHANGE) ShowTab(TabCtrl_GetCurSel(g_tabs));
+            // Right-click a Live or Rules row -> context menu (add / delete a rule).
+            if (n->code == NM_RCLICK &&
+                (n->hwndFrom == g_lv[TAB_LIVE] || n->hwndFrom == g_lv[TAB_RULES])) {
+                LPNMITEMACTIVATE ia = (LPNMITEMACTIVATE)l;
+                if (ia->iItem < 0) return 0;
+                LVITEMW it{}; it.mask = LVIF_PARAM; it.iItem = ia->iItem;
+                ListView_GetItem(n->hwndFrom, &it);
+                g_ctxParam = (long long)it.lParam;
+                HMENU menu = CreatePopupMenu();
+                if (g_cur == TAB_LIVE) {
+                    AppendMenuW(menu, MF_STRING, IDM_BLOCK_DEST, L"Block this destination (IP:port)");
+                    AppendMenuW(menu, MF_STRING, IDM_ALLOW_DEST, L"Allow this destination (IP:port)");
+                    AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+                    AppendMenuW(menu, MF_STRING, IDM_ALLOW_APP, L"Allow this app (any port)");
+                    AppendMenuW(menu, MF_STRING, IDM_BLOCK_APP, L"Block this app (any port)");
+                } else {
+                    AppendMenuW(menu, MF_STRING, IDM_DEL_RULE, L"Delete rule");
+                }
+                POINT pt; GetCursorPos(&pt);
+                SetForegroundWindow(g_dash);
+                TrackPopupMenu(menu, TPM_RIGHTBUTTON, pt.x, pt.y, 0, g_dash, nullptr);
+                DestroyMenu(menu);
+            }
             return 0;
         }
         case WM_SIZE:  LayoutChildren(); return 0;
@@ -264,6 +353,11 @@ LRESULT CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case IDB_STOP:    StopDaemon(); AppendLog(L"[dashboard] stopped; failing open.\r\n"); break;
                 case IDB_PANIC:   StopDaemon(); AppendLog(L"[dashboard] PANIC - all filters removed.\r\n"); break;
                 case IDB_REFRESH: ShowTab(g_cur); break;
+                case IDM_BLOCK_DEST: AddRuleFromEvent(g_ctxParam, true,  false); break;
+                case IDM_ALLOW_DEST: AddRuleFromEvent(g_ctxParam, false, false); break;
+                case IDM_ALLOW_APP:  AddRuleFromEvent(g_ctxParam, false, true);  break;
+                case IDM_BLOCK_APP:  AddRuleFromEvent(g_ctxParam, true,  true);  break;
+                case IDM_DEL_RULE:   DelRule(g_ctxParam); FillRules(g_lv[TAB_RULES]); break;
             }
             return 0;
         case WM_DESTROY: KillTimer(h, 1); g_dash = nullptr; return 0;
@@ -322,9 +416,10 @@ void OpenDashboard(HINSTANCE hInst) {
     AddCol(g_lv[TAB_LIVE], 2, L"Application", 220);
     AddCol(g_lv[TAB_LIVE], 3, L"Destination", 320);
     AddCol(g_lv[TAB_LIVE], 4, L"Port", 60);
-    AddCol(g_lv[TAB_RULES], 0, L"Application (permitted)", 460);
-    AddCol(g_lv[TAB_RULES], 1, L"Port", 70);
-    AddCol(g_lv[TAB_RULES], 2, L"Connections", 110);
+    AddCol(g_lv[TAB_RULES], 0, L"Action", 80);
+    AddCol(g_lv[TAB_RULES], 1, L"Target (app / IP)", 380);
+    AddCol(g_lv[TAB_RULES], 2, L"Port", 70);
+    AddCol(g_lv[TAB_RULES], 3, L"Info", 120);
     AddCol(g_lv[TAB_HABITS], 0, L"Application", 260);
     AddCol(g_lv[TAB_HABITS], 1, L"Destination", 340);
     AddCol(g_lv[TAB_HABITS], 2, L"Port", 70);
