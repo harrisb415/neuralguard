@@ -26,7 +26,8 @@ enum { IDB_ENFORCE = 100, IDB_LEARN, IDB_STOP, IDB_PANIC, IDB_REFRESH, IDB_COUNT
 enum { IDM_BLOCK_DEST = 300, IDM_ALLOW_DEST, IDM_ALLOW_APP, IDM_BLOCK_APP,
        IDM_ALLOW_DEST_1H, IDM_DEL_RULE };
 enum { IDC_SEARCH = 400, IDB_EXPORT = 401, IDB_IMPORT = 402,
-       IDC_AUTO0 = 410, IDC_AUTO1 = 411, IDC_AUTO2 = 412 };
+       IDC_AUTO0 = 410, IDC_AUTO1 = 411, IDC_AUTO2 = 412,
+       IDB_SVC_INSTALL = 420, IDB_SVC_REMOVE = 421 };
 constexpr UINT WM_APP_LOG = WM_APP + 7;
 
 const wchar_t* kBtnLabel[IDB_COUNT_] = {L"Enforce", L"Learn", L"Stop", L"Panic", L"Refresh"};
@@ -36,6 +37,7 @@ HWND g_lv[TAB_COUNT] = {};
 HWND g_btn[IDB_COUNT_] = {};
 HWND g_search = nullptr, g_export = nullptr, g_import = nullptr;
 HWND g_autoLabel = nullptr, g_autoRadio[3] = {};
+HWND g_svcLabel = nullptr, g_svcInstall = nullptr, g_svcRemove = nullptr;
 int  g_cur = 0;
 long long g_lastEventId = -1;
 long long g_ctxParam = 0;   // DB id of the row the context menu was opened on
@@ -492,6 +494,10 @@ void LayoutChildren() {
     for (int k = 0; k < 3; ++k)
         MoveWindow(g_autoRadio[k], disp.left + 24, disp.top + 52 + k * 34,
                    disp.right - disp.left - 48, 26, TRUE);
+    int sy = disp.top + 52 + 3 * 34 + 18;
+    MoveWindow(g_svcLabel, disp.left + 16, sy, disp.right - disp.left - 32, 22, TRUE);
+    MoveWindow(g_svcInstall, disp.left + 24, sy + 28, 200, 26, TRUE);
+    MoveWindow(g_svcRemove, disp.left + 24 + 210, sy + 28, 160, 26, TRUE);
 }
 
 void ShowTab(int i) {
@@ -500,6 +506,9 @@ void ShowTab(int i) {
     for (int k = 0; k < TAB_COUNT; ++k) ShowWindow(g_lv[k], (k == i && !settings) ? SW_SHOW : SW_HIDE);
     ShowWindow(g_autoLabel, settings ? SW_SHOW : SW_HIDE);
     for (int k = 0; k < 3; ++k) ShowWindow(g_autoRadio[k], settings ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_svcLabel, settings ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_svcInstall, settings ? SW_SHOW : SW_HIDE);
+    ShowWindow(g_svcRemove, settings ? SW_SHOW : SW_HIDE);
     if (settings) {
         int a = ReadAutonomy();
         for (int k = 0; k < 3; ++k)
@@ -581,6 +590,13 @@ LRESULT CALLBACK Proc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 case IDC_AUTO0: WriteAutonomy(0); AppendLog(L"[settings] autonomy: prompt on every new connection.\r\n"); break;
                 case IDC_AUTO1: WriteAutonomy(1); AppendLog(L"[settings] autonomy: auto-allow apps you already use.\r\n"); break;
                 case IDC_AUTO2: WriteAutonomy(2); AppendLog(L"[settings] autonomy: auto-allow everything (log only).\r\n"); break;
+                case IDB_SVC_INSTALL:
+                    StopDaemon();   // avoid two enforcers fighting over the sublayer
+                    RunSync(L"ngd.exe", L"install \"" + ExeDir() + L"\\ngpolicy.db\"");
+                    break;
+                case IDB_SVC_REMOVE:
+                    RunSync(L"ngd.exe", L"uninstall");
+                    break;
             }
             return 0;
         case WM_DESTROY: KillTimer(h, 1); g_dash = nullptr; return 0;
@@ -641,6 +657,13 @@ void OpenDashboard(HINSTANCE hInst) {
         WS_CHILD | BS_AUTORADIOBUTTON, 0, 0, 0, 0, g_dash, (HMENU)(INT_PTR)IDC_AUTO1, hInst, nullptr);
     g_autoRadio[2] = CreateWindowW(L"BUTTON", L"Auto-allow everything (log only, never prompt)",
         WS_CHILD | BS_AUTORADIOBUTTON, 0, 0, 0, 0, g_dash, (HMENU)(INT_PTR)IDC_AUTO2, hInst, nullptr);
+    g_svcLabel = CreateWindowW(L"STATIC",
+        L"Background service — enforce as SYSTEM at boot (no UAC prompts ever):",
+        WS_CHILD, 0, 0, 0, 0, g_dash, nullptr, hInst, nullptr);
+    g_svcInstall = CreateWindowW(L"BUTTON", L"Install service", WS_CHILD | BS_PUSHBUTTON,
+        0, 0, 0, 0, g_dash, (HMENU)(INT_PTR)IDB_SVC_INSTALL, hInst, nullptr);
+    g_svcRemove = CreateWindowW(L"BUTTON", L"Remove service", WS_CHILD | BS_PUSHBUTTON,
+        0, 0, 0, 0, g_dash, (HMENU)(INT_PTR)IDB_SVC_REMOVE, hInst, nullptr);
 
     g_tabs = CreateWindowW(WC_TABCONTROLW, L"", WS_CHILD | WS_VISIBLE, 0, 0, 0, 0, g_dash, nullptr, hInst, nullptr);
     TCITEMW ti{}; ti.mask = TCIF_TEXT;
