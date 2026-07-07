@@ -183,9 +183,10 @@ void PollLive() {
     sqlite3_stmt* s = nullptr;
     sqlite3_prepare_v2(d.handle(),
         "SELECT fe.id, fe.ts_utc, fe.verdict,"
-        " COALESCE((SELECT process_label FROM process_identity WHERE id=fe.image_id), fe.image_path),"
+        " COALESCE(pi.signer, pi.image_path, fe.image_path),"
         " COALESCE(fe.remote_domain, fe.remote_addr), fe.remote_port"
-        " FROM flow_events fe WHERE fe.id > ? ORDER BY fe.id ASC LIMIT 300;", -1, &s, nullptr);
+        " FROM flow_events fe LEFT JOIN process_identity pi ON fe.image_id = pi.id"
+        " WHERE fe.id > ? ORDER BY fe.id ASC LIMIT 300;", -1, &s, nullptr);
     sqlite3_bind_int64(s, 1, g_lastEventId);
     while (sqlite3_step(s) == SQLITE_ROW) {
         g_lastEventId = sqlite3_column_int64(s, 0);
