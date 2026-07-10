@@ -154,7 +154,11 @@ blocks and a manageable prompt rate.
   connections) vs provisional; `enforce-baseline` now permits only stable pairs
   (default ≥ 3), so one-offs aren't silently trusted (84 → 16 permits on the live
   baseline). Provisional pairs fall to default-deny → a prompt once the tray lands.
-- ⬜ Configurable autonomy levels + weekly digest delivery.
+- ✅ Configurable autonomy levels — prompt-everything / auto-allow-known /
+  auto-allow-all, set from the dashboard's Settings tab and read live by the
+  enforce daemon per drop.
+- ⬜ Weekly digest delivery (`ngd digest` exists as an on-demand report; no
+  scheduled delivery mechanism yet).
 
 ## Phase 3 — Habit scoring & autonomy
 
