@@ -15,6 +15,7 @@
 #include "core/db.h"
 #include "core/dns.h"
 #include "core/enforcer.h"
+#include "core/flowstats.h"
 #include "core/habit.h"
 #include "core/identity.h"
 #include "core/util.h"
@@ -37,6 +38,7 @@ namespace {
 
 ng::Recorder* g_recorder = nullptr;
 ng::EnforceDaemon* g_enforce = nullptr;
+ng::FlowCollector* g_collector = nullptr;
 
 bool IsElevated() {
     HANDLE tok = nullptr;
@@ -62,6 +64,9 @@ void PrintUsage() {
         "  ngd promote [db]              Show stable vs provisional (app, port) pairs.\n"
         "  ngd enforce [db] [seconds]    LIVE: permit the stable baseline, default-deny the\n"
         "                                rest, and prompt the tray on novel connections.\n"
+        "  ngd features [db] [seconds]   Collect completed-flow features (Phase 4 ML data).\n"
+        "  ngd features dump [db]        Show recent archived feature rows.\n"
+        "  ngd features purge [db] [days] Delete feature rows older than [days] (default 30).\n"
         "  ngd -h | --help | /?          Show this help.\n\n"
         "Recording requires an elevated (Administrator) prompt.\n");
 }
@@ -70,6 +75,7 @@ BOOL WINAPI CtrlHandler(DWORD type) {
     if (type == CTRL_C_EVENT || type == CTRL_BREAK_EVENT || type == CTRL_CLOSE_EVENT) {
         if (g_recorder) g_recorder->stop();
         if (g_enforce) g_enforce->stop();
+        if (g_collector) g_collector->stop();
         return TRUE;
     }
     return FALSE;
@@ -425,6 +431,88 @@ int RunRuleDel(ng::Db& db, int id) {
     return 0;
 }
 
+// Phase 4a: print the most recent completed-flow feature rows. Read-only.
+int RunFeaturesDump(ng::Db& db) {
+    sqlite3* h = db.handle();
+    long long total = 0;
+    sqlite3_stmt* c = nullptr;
+    if (sqlite3_prepare_v2(h, "SELECT COUNT(*) FROM flow_features;", -1, &c, nullptr) == SQLITE_OK) {
+        if (sqlite3_step(c) == SQLITE_ROW) total = sqlite3_column_int64(c, 0);
+        sqlite3_finalize(c);
+    }
+    printf("flow_features: %lld row(s) archived\n\n", total);
+    printf("  %-8s  %-26s  %-24s  %8s  %11s  %11s\n",
+           "time", "app", "dest:port", "dur(ms)", "bytes_in", "bytes_out");
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(h,
+            "SELECT ts_utc, COALESCE(process_label,''), COALESCE(dest,''), remote_port,"
+            " duration_ms, bytes_in, bytes_out FROM flow_features ORDER BY id DESC LIMIT 40;",
+            -1, &s, nullptr) != SQLITE_OK)
+        return 1;
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        std::string ts  = (const char*)sqlite3_column_text(s, 0);
+        std::string tm  = ts.size() >= 19 ? ts.substr(11, 8) : ts;
+        std::string app = (const char*)sqlite3_column_text(s, 1);
+        std::string dst = (const char*)sqlite3_column_text(s, 2);
+        if (app.size() > 26) app = app.substr(0, 25) + ">";
+        std::string dp = dst + ":" + std::to_string(sqlite3_column_int(s, 3));
+        if (dp.size() > 24) dp = dp.substr(0, 23) + ">";
+        printf("  %-8s  %-26s  %-24s  %8d  %11lld  %11lld\n",
+               tm.c_str(), app.c_str(), dp.c_str(), sqlite3_column_int(s, 4),
+               (long long)sqlite3_column_int64(s, 5), (long long)sqlite3_column_int64(s, 6));
+    }
+    sqlite3_finalize(s);
+    return 0;
+}
+
+// ngd features                    - collect completed-flow features (needs admin)
+// ngd features <db> [seconds]     - collect into <db>, optional timed run
+// ngd features dump [db]          - show recent archived feature rows
+// ngd features purge [db] [days]  - delete rows older than [days] (default 30)
+int RunFeatures(int argc, char** argv) {
+    const char* sub = (argc >= 3) ? argv[2] : nullptr;
+    const bool isDump  = sub && strcmp(sub, "dump") == 0;
+    const bool isPurge = sub && strcmp(sub, "purge") == 0;
+
+    const char* dbPath = "ngpolicy.db";
+    int seconds = 0, days = 30;
+    if (isDump || isPurge) {
+        if (argc >= 4) dbPath = argv[3];
+        if (isPurge && argc >= 5) days = atoi(argv[4]);
+    } else {
+        if (argc >= 3) dbPath = argv[2];
+        if (argc >= 4) seconds = atoi(argv[3]);
+    }
+
+    if (!isDump && !isPurge && !IsElevated()) {
+        fprintf(stderr, "ngd features (collection) needs Administrator - enabling TCP ESTATS "
+                        "data collection is privileged. (dump/purge do not.)\n");
+        return 1;
+    }
+
+    ng::Db db;
+    if (!db.open(dbPath)) return 1;
+
+    if (isDump) return RunFeaturesDump(db);
+    if (isPurge) {
+        long long n = ng::PurgeFlowFeatures(db, days);
+        if (n < 0) { fprintf(stderr, "purge failed\n"); return 1; }
+        printf("purged %lld flow feature row(s) older than %d days.\n", n, days);
+        return 0;
+    }
+
+    ng::IdentityResolver resolver(db);
+    resolver.init();
+    ng::FlowCollector collector(db, resolver);
+    g_collector = &collector;
+    SetConsoleCtrlHandler(CtrlHandler, TRUE);
+    printf("ngd - collecting completed-flow features to %s%s. Press Ctrl+C to stop.\n",
+           dbPath, seconds > 0 ? " (timed)" : "");
+    bool ok = collector.run(seconds);
+    printf("stopped. %llu flow feature row(s) written.\n", collector.written());
+    return ok ? 0 : 1;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -447,6 +535,10 @@ int main(int argc, char** argv) {
         if (!GetFullPathNameA(rel, MAX_PATH, abs, nullptr)) { fprintf(stderr, "bad db path\n"); return 1; }
         return ng::ServiceInstall(abs);
     }
+
+    // `features` has sub-subcommands (dump/purge), so handle it before the flat
+    // mode parser below treats argv[2] as a db path.
+    if (argc >= 2 && strcmp(argv[1], "features") == 0) return RunFeatures(argc, argv);
 
     const char* mode = "record";
     const char* dbPath = "ngpolicy.db";

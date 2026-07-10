@@ -33,12 +33,14 @@ add_library(ngcore STATIC
   src/core/dns.cpp
   src/core/habit.cpp
   src/core/enforcer.cpp
+  src/core/flowstats.cpp
   src/core/prompt.cpp)
 target_include_directories(ngcore PUBLIC src)
 target_compile_definitions(ngcore PUBLIC ${NG_DEFS})
 target_compile_options(ngcore PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
-# fwpuclnt = WFP API; uuid = predefined FWPM_LAYER_*/CONDITION_* GUIDs.
-target_link_libraries(ngcore PUBLIC sqlite3 bcrypt crypt32 wintrust tdh advapi32 ws2_32 fwpuclnt uuid)
+# fwpuclnt = WFP API; uuid = predefined FWPM_LAYER_*/CONDITION_* GUIDs;
+# iphlpapi = GetTcpTable2 + TCP ESTATS (flow bytes); psapi = PID -> image path.
+target_link_libraries(ngcore PUBLIC sqlite3 bcrypt crypt32 wintrust tdh advapi32 ws2_32 fwpuclnt uuid iphlpapi psapi)
 
 # --- ngmon (Phase 0): WFP net-event printer ---------------------------------
 add_executable(ngmon src/ngmon/main.cpp)

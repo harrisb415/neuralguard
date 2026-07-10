@@ -181,11 +181,23 @@ See [`DESIGN.md` §6](DESIGN.md#6-where-ml-actually-lives-phase-4) for the full
 architecture (two-model design, feature vector, the feedback loop, shadow-mode
 rollout, data governance). Planned, not started — every item below is ⬜.
 
-- ⬜ **4a. Feature archival + flow-completion detection.** Opt-in (off by default),
-  auto-purged `flow_features` table. Spike the open question first: byte-count
-  accounting per flow in pure user mode (`GetPerTcpConnectionEStats`, untested) —
-  don't let it block 4b/4c, which don't need it. Deliverable: `ngd features dump`
-  shows real archived vectors, no ML involved yet.
+- ✅ **4a. Feature archival + flow-completion detection.** DONE. The flagged
+  open question resolved **yes**: a spike proved TCP ESTATS
+  (`GetPerTcpConnectionEStats`) delivers per-flow `DataBytesIn`/`DataBytesOut`
+  reliably in pure user mode (786/786 reads, cumulative from connection start),
+  and polling `GetTcpTable2` and diffing detects completion (a connection
+  present then gone = closed, final stats captured). `ng::FlowCollector`
+  (`src/core/flowstats.cpp`) writes one `flow_features` row per completed TCP
+  flow — process identity (PID→`GetProcessImageFileNameW`→`IdentityResolver`),
+  destination IP, port, observed duration, bytes in/out. Opt-in
+  (`meta('feature_archive')`, off by default), auto-purged (30-day retention on
+  start + `ngd features purge`). CLI: `ngd features [db] [secs]` collects,
+  `ngd features dump` shows, `ngd features purge` prunes. Verified on the VM:
+  11 real completed flows captured with sensible bytes/durations. *Known
+  limits (fine for a foundation): destination is the raw IP (domain correlation
+  comes when folded into the enforce daemon, which has the DNS watcher);
+  connections open+closed inside one 2s poll are missed; a pre-existing
+  connection's duration is measured from first-seen, not its true start.*
 - ⬜ **4b. Anomaly scorer (unsupervised, no external data).** Isolation Forest
   trained solely on your own archived flows → ONNX. `ngd` scores completed flows
   asynchronously in **shadow mode only** (logged, visible, zero effect on any

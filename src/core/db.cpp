@@ -64,7 +64,27 @@ const char* kSchema =
     "INSERT OR IGNORE INTO meta(k,v) VALUES('rules_gen','0');"
     // Autonomy: 0 = prompt on every novel connection, 1 = auto-allow when the
     // app is already known (has a learned habit), 2 = auto-allow everything.
-    "INSERT OR IGNORE INTO meta(k,v) VALUES('autonomy','0');";
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('autonomy','0');"
+    // Phase 4 data foundation: one row per COMPLETED TCP flow - the metadata
+    // feature vector the ML tier scores (asynchronously, off the decision
+    // path). Populated by `ngd features` from GetTcpTable2 + per-connection
+    // ESTATS byte counts. Opt-in (feature_archive) and auto-purged.
+    "CREATE TABLE IF NOT EXISTS flow_features("
+    "  id INTEGER PRIMARY KEY,"
+    "  ts_utc        TEXT NOT NULL,"   // flow completion (observation) time
+    "  process_key   TEXT,"            // sig:<thumb> | sha:<hash> | dev:<path>
+    "  process_label TEXT,"
+    "  dest          TEXT,"            // remote IP (domain correlation added later)
+    "  remote_port   INTEGER,"
+    "  protocol      INTEGER,"
+    "  duration_ms   INTEGER,"         // observed lifetime of the connection
+    "  bytes_in      INTEGER,"
+    "  bytes_out     INTEGER,"
+    "  local_port    INTEGER);"
+    // Feature archival is off by default (privacy: it records who you talked to
+    // and how much). `ngd features` collecting is itself the opt-in; this flag
+    // gates future collection folded into the enforce/record daemon.
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('feature_archive','0');";
 }  // namespace
 
 bool Db::open(const char* path) {
