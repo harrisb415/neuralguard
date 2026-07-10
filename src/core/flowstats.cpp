@@ -1,8 +1,11 @@
 #include "core/flowstats.h"
 
 #include "core/db.h"
+#include "core/dns.h"
 #include "core/identity.h"
 #include "core/util.h"
+
+#include <mutex>
 
 // Winsock headers must precede <windows.h>; NG_DEFS defines WIN32_LEAN_AND_MEAN.
 #include <winsock2.h>
@@ -84,6 +87,7 @@ long long PurgeFlowFeatures(Db& db, int days) {
     FILETIME cf; cf.dwLowDateTime = u.LowPart; cf.dwHighDateTime = u.HighPart;
     std::string cutoff = util::IsoTime(cf);
 
+    std::lock_guard<std::mutex> lk(db.mutex());
     sqlite3_stmt* s = nullptr;
     if (sqlite3_prepare_v2(db.handle(), "DELETE FROM flow_features WHERE ts_utc < ?;",
                            -1, &s, nullptr) != SQLITE_OK)
@@ -123,12 +127,18 @@ bool FlowCollector::run(int seconds) {
     auto writeFlow = [&](const ActiveFlow& f, double nowEpoch) {
         int durMs = (int)((nowEpoch - f.firstEpoch) * 1000.0);
         if (durMs < 0) durMs = 0;
+        // Resolve the destination to a domain at completion time - by now DNS
+        // (which lags the connect by ~1s) has almost always caught up.
+        std::string dest = f.remoteIp;
+        if (dns_) { std::string d = dns_->lookup(f.remoteIp); if (!d.empty()) dest = d; }
+        // Serialize with the recorder, which writes flow_events from WFP threads.
+        std::lock_guard<std::mutex> lk(db_.mutex());
         sqlite3_reset(ins);
         sqlite3_clear_bindings(ins);
         bindText(ins, 1, util::IsoNow());
         bindText(ins, 2, f.procKey);
         bindText(ins, 3, f.procLabel);
-        bindText(ins, 4, f.remoteIp);
+        bindText(ins, 4, dest);
         sqlite3_bind_int(ins, 5, (int)f.remotePort);
         sqlite3_bind_int(ins, 6, IPPROTO_TCP);
         sqlite3_bind_int(ins, 7, durMs);

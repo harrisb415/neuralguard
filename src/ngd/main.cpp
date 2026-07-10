@@ -50,6 +50,34 @@ bool IsElevated() {
     return elevated;
 }
 
+std::string MetaGet(ng::Db& db, const char* key, const char* dflt) {
+    std::string v = dflt;
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db.handle(), "SELECT v FROM meta WHERE k=?;", -1, &s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, key, -1, SQLITE_TRANSIENT);
+        if (sqlite3_step(s) == SQLITE_ROW) {
+            const char* t = (const char*)sqlite3_column_text(s, 0);
+            if (t) v = t;
+        }
+        sqlite3_finalize(s);
+    }
+    return v;
+}
+
+void MetaSet(ng::Db& db, const char* key, const char* val) {
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db.handle(),
+            "INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v;",
+            -1, &s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, key, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(s, 2, val, -1, SQLITE_TRANSIENT);
+        sqlite3_step(s);
+        sqlite3_finalize(s);
+    }
+}
+
+bool FeatureArchiveOn(ng::Db& db) { return MetaGet(db, "feature_archive", "0") == "1"; }
+
 void PrintUsage() {
     printf(
         "NeuralGuard ngd - learning-mode WFP recorder\n\n"
@@ -467,16 +495,20 @@ int RunFeaturesDump(ng::Db& db) {
 
 // ngd features                    - collect completed-flow features (needs admin)
 // ngd features <db> [seconds]     - collect into <db>, optional timed run
+// ngd features on|off [db]        - toggle archival by the enforce/record daemon
 // ngd features dump [db]          - show recent archived feature rows
 // ngd features purge [db] [days]  - delete rows older than [days] (default 30)
 int RunFeatures(int argc, char** argv) {
     const char* sub = (argc >= 3) ? argv[2] : nullptr;
     const bool isDump  = sub && strcmp(sub, "dump") == 0;
     const bool isPurge = sub && strcmp(sub, "purge") == 0;
+    const bool isOn    = sub && strcmp(sub, "on") == 0;
+    const bool isOff   = sub && strcmp(sub, "off") == 0;
+    const bool isCmd   = isDump || isPurge || isOn || isOff;
 
     const char* dbPath = "ngpolicy.db";
     int seconds = 0, days = 30;
-    if (isDump || isPurge) {
+    if (isCmd) {
         if (argc >= 4) dbPath = argv[3];
         if (isPurge && argc >= 5) days = atoi(argv[4]);
     } else {
@@ -484,15 +516,22 @@ int RunFeatures(int argc, char** argv) {
         if (argc >= 4) seconds = atoi(argv[3]);
     }
 
-    if (!isDump && !isPurge && !IsElevated()) {
+    // Only live collection needs admin (ESTATS enable); the rest are DB-only.
+    if (!isCmd && !IsElevated()) {
         fprintf(stderr, "ngd features (collection) needs Administrator - enabling TCP ESTATS "
-                        "data collection is privileged. (dump/purge do not.)\n");
+                        "data collection is privileged. (dump/purge/on/off do not.)\n");
         return 1;
     }
 
     ng::Db db;
     if (!db.open(dbPath)) return 1;
 
+    if (isOn || isOff) {
+        MetaSet(db, "feature_archive", isOn ? "1" : "0");
+        printf("feature archival is now %s. It takes effect on the next ngd enforce/record run.\n",
+               isOn ? "ON" : "OFF");
+        return 0;
+    }
     if (isDump) return RunFeaturesDump(db);
     if (isPurge) {
         long long n = ng::PurgeFlowFeatures(db, days);
@@ -596,7 +635,21 @@ int main(int argc, char** argv) {
         g_enforce = &daemon;
         SetConsoleCtrlHandler(CtrlHandler, TRUE);
         SetMode(db, "enforcing");
+
+        // Phase 4a: optionally archive completed-flow features in the background,
+        // correlated to domains via the same DNS watcher.
+        ng::FlowCollector collector(db, resolver, &dns);
+        std::thread featThread;
+        const bool feat = FeatureArchiveOn(db);
+        if (feat) {
+            g_collector = &collector;
+            printf("feature archival ON - collecting completed-flow features alongside enforcement.\n");
+            featThread = std::thread([&collector] { collector.run(0); });
+        }
+
         bool ok = daemon.run(seconds);
+
+        if (feat) { collector.stop(); if (featThread.joinable()) featThread.join(); g_collector = nullptr; }
         SetMode(db, "idle");
         dns.stop();
         return ok ? 0 : 1;
@@ -615,6 +668,17 @@ int main(int argc, char** argv) {
     printf("ngd - recording to %s%s. Press Ctrl+C to stop.\n", dbPath,
            seconds > 0 ? " (timed)" : "");
     SetMode(db, "learning");
+
+    // Phase 4a: optionally archive completed-flow features while learning.
+    ng::FlowCollector collector(db, resolver, &dns);
+    std::thread featThread;
+    const bool feat = FeatureArchiveOn(db);
+    if (feat) {
+        g_collector = &collector;
+        printf("feature archival ON - collecting completed-flow features.\n");
+        featThread = std::thread([&collector] { collector.run(0); });
+    }
+
     std::thread timer;
     if (seconds > 0)
         timer = std::thread([&recorder, seconds]() {
@@ -623,6 +687,7 @@ int main(int argc, char** argv) {
         });
     bool ok = recorder.run();
     if (timer.joinable()) timer.join();
+    if (feat) { collector.stop(); if (featThread.joinable()) featThread.join(); g_collector = nullptr; }
     SetMode(db, "idle");
     dns.stop();
     return ok ? 0 : 1;

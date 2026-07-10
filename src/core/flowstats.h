@@ -16,14 +16,21 @@ namespace ng {
 
 class Db;
 class IdentityResolver;
+class DnsWatcher;
 
 class FlowCollector {
 public:
-    FlowCollector(Db& db, IdentityResolver& id) : db_(db), id_(id) {}
+    // `dns` is optional: when the collector runs alongside the enforce/record
+    // daemon it correlates each flow's remote IP to the resolved domain; when
+    // run standalone (`ngd features`) it's null and the dest stays the raw IP.
+    FlowCollector(Db& db, IdentityResolver& id, DnsWatcher* dns = nullptr)
+        : db_(db), id_(id), dns_(dns) {}
 
     // Poll loop. seconds == 0 runs until stop()/Ctrl-C. Auto-purges old rows
     // at start. Only genuinely-closed connections are written, so the cleanest
     // data comes from flows observed start-to-finish (continuous running).
+    // Writes are serialized on Db::mutex(), so this is safe to run on its own
+    // thread beside the recorder (which also writes from WFP callback threads).
     bool run(int seconds);
     void stop();
     unsigned long long written() const { return written_.load(); }
@@ -31,6 +38,7 @@ public:
 private:
     Db& db_;
     IdentityResolver& id_;
+    DnsWatcher* dns_ = nullptr;
     void* stopEvent_ = nullptr;
     std::atomic<unsigned long long> written_{ 0 };
 };
