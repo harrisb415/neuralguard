@@ -167,23 +167,33 @@
                     </ListView.ItemTemplate>
                 </ListView>
 
-                <!-- Transient status toast (auto-dismisses); floats over the list,
-                     centred and elevated so it's hard to miss. The InfoBar severity
-                     fill is semi-transparent, so an opaque backing panel sits behind
-                     it to stop the window's Mica/desktop showing through. -->
-                <Grid Grid.Row="2" x:Name="ToastHost"
-                      VerticalAlignment="Bottom" HorizontalAlignment="Center"
-                      Margin="0,0,0,24">
-                    <Grid.Shadow>
-                        <ThemeShadow/>
-                    </Grid.Shadow>
-                    <Border x:Name="ToastBacking" CornerRadius="4" Visibility="Collapsed"
-                            Background="{ThemeResource SolidBackgroundFillColorBaseBrush}"/>
-                    <muxc:InfoBar x:Name="Toast"
-                                  IsOpen="False" IsClosable="True"
-                                  MinWidth="420" MaxWidth="680" FontSize="15"
-                                  Closed="OnToastClosed"/>
-                </Grid>
+                <!-- Transient status toast (auto-dismisses); floats centred at the
+                     bottom over the list. Severity fill brushes are overridden to
+                     opaque so the window's Mica/desktop doesn't show through. Single
+                     element, sized to its content, so nothing is left behind on close. -->
+                <muxc:InfoBar Grid.Row="2" x:Name="Toast"
+                              IsOpen="False" IsClosable="True"
+                              VerticalAlignment="Bottom" HorizontalAlignment="Center"
+                              MaxWidth="680" Margin="0,0,0,24" FontSize="15">
+                    <muxc:InfoBar.Resources>
+                        <ResourceDictionary>
+                            <ResourceDictionary.ThemeDictionaries>
+                                <ResourceDictionary x:Key="Light">
+                                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#EFF4FB"/>
+                                    <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#DFF6DD"/>
+                                    <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#FFF4CE"/>
+                                    <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#FDE7E9"/>
+                                </ResourceDictionary>
+                                <ResourceDictionary x:Key="Dark">
+                                    <SolidColorBrush x:Key="InfoBarInformationalSeverityBackgroundBrush" Color="#2A2E34"/>
+                                    <SolidColorBrush x:Key="InfoBarSuccessSeverityBackgroundBrush" Color="#1B3A22"/>
+                                    <SolidColorBrush x:Key="InfoBarWarningSeverityBackgroundBrush" Color="#3A3417"/>
+                                    <SolidColorBrush x:Key="InfoBarErrorSeverityBackgroundBrush" Color="#3E2A2B"/>
+                                </ResourceDictionary>
+                            </ResourceDictionary.ThemeDictionaries>
+                        </ResourceDictionary>
+                    </muxc:InfoBar.Resources>
+                </muxc:InfoBar>
             </Grid>
         </muxc:NavigationView>
     </Grid>

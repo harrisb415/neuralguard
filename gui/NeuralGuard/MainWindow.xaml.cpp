@@ -62,7 +62,6 @@ namespace winrt::NeuralGuard::implementation
             toastTimer_.Stop();
             Toast().IsOpen(false);
         });
-        ToastHost().Translation({ 0.0f, 0.0f, 48.0f });   // lift the toast so its shadow reads
 
         UpdateMode();
         ShowView(L"live");
@@ -207,15 +206,9 @@ namespace winrt::NeuralGuard::implementation
         Toast().Title(title);
         Toast().Severity(severity);
         Toast().Message(message);
-        ToastBacking().Visibility(Visibility::Visible);
         Toast().IsOpen(true);
         toastTimer_.Stop();
         toastTimer_.Start();   // restart the auto-dismiss countdown
-    }
-    void MainWindow::OnToastClosed(Controls::InfoBar const&, Controls::InfoBarClosedEventArgs const&)
-    {
-        toastTimer_.Stop();
-        ToastBacking().Visibility(Visibility::Collapsed);
     }
 
     void MainWindow::UpdateMode()

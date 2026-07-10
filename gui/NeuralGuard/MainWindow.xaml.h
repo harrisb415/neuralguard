@@ -27,8 +27,6 @@ namespace winrt::NeuralGuard::implementation
                             winrt::Microsoft::UI::Xaml::Input::PointerRoutedEventArgs const&);
         void OnContainerChanging(winrt::Microsoft::UI::Xaml::Controls::ListViewBase const&,
                                  winrt::Microsoft::UI::Xaml::Controls::ContainerContentChangingEventArgs const&);
-        void OnToastClosed(winrt::Microsoft::UI::Xaml::Controls::InfoBar const&,
-                           winrt::Microsoft::UI::Xaml::Controls::InfoBarClosedEventArgs const&);
 
     private:
         void AddRuleFromEvent(int64_t eventId, bool block, bool useApp, int ttlSeconds);
