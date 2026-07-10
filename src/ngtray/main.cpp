@@ -10,8 +10,6 @@
 // blocked connections (the block-notify-retry flow) need the ngd->tray pipe and
 // come next.
 
-#include "ngtray/dashboard.h"
-
 #include <windows.h>
 #include <shellapi.h>
 
@@ -40,6 +38,21 @@ void RunCtl(const wchar_t* sub) {
     std::wstring args = L"/k \"\"" + dir + L"\\ngctl.exe\" " + sub + L"\"";
     // Tray runs elevated, so the child inherits the token - "open", no extra UAC.
     ShellExecuteW(nullptr, L"open", L"cmd.exe", args.c_str(), dir.c_str(), SW_SHOWNORMAL);
+}
+
+// Open the WinUI dashboard (NeuralGuard.exe under dashboard\, beside ngtray).
+// If it's already up, bring it to the front instead of launching a second copy.
+// The tray is elevated, so the dashboard inherits the token and its Enforce/
+// Learn/Stop/Panic actions run without a per-click UAC prompt.
+void OpenDashboard() {
+    if (HWND existing = FindWindowW(nullptr, L"NeuralGuard")) {
+        ShowWindow(existing, SW_RESTORE);
+        SetForegroundWindow(existing);
+        return;
+    }
+    std::wstring dir = ExeDir() + L"\\dashboard";
+    std::wstring exe = dir + L"\\NeuralGuard.exe";
+    ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, dir.c_str(), SW_SHOWNORMAL);
 }
 
 std::wstring Widen(const std::string& s) {
@@ -112,7 +125,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
     switch (msg) {
         case WM_TRAY:
             if (LOWORD(l) == WM_LBUTTONDBLCLK) {
-                ng::OpenDashboard(g_hInst);  // double-click the tray icon -> dashboard
+                OpenDashboard();  // double-click the tray icon -> dashboard
             } else if (LOWORD(l) == WM_RBUTTONUP || LOWORD(l) == WM_CONTEXTMENU) {
                 POINT pt; GetCursorPos(&pt);
                 HMENU m = CreatePopupMenu();
@@ -128,7 +141,7 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
             return 0;
         case WM_COMMAND:
             switch (LOWORD(w)) {
-                case ID_DASHBOARD: ng::OpenDashboard(g_hInst); break;
+                case ID_DASHBOARD: OpenDashboard(); break;
                 case ID_STATUS: RunCtl(L"status"); break;
                 case ID_PANIC:  RunCtl(L"panic");  break;
                 case ID_QUIT:   DestroyWindow(h);  break;
@@ -179,7 +192,7 @@ int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR pCmdLine, int) {
     // Listen for connection prompts from the privileged daemon.
     std::thread(PipeServer).detach();
 
-    if (openDash) ng::OpenDashboard(hInst);
+    if (openDash) OpenDashboard();
 
     MSG msg;
     while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
