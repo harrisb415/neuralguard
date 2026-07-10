@@ -1,0 +1,14 @@
+# Off-device training dependencies for the Phase-4 ML scorers
+# (scripts/train_anomaly.py). These are needed only on the dev machine that
+# trains models, never on the engine / target machine.
+#
+#   python -m venv .venv-ml
+#   .venv-ml\Scripts\activate        (Windows)   or   source .venv-ml/bin/activate
+#   pip install -r scripts/requirements-ml.txt
+#
+# Note: skl2onnx/onnx wheels can lag brand-new Python releases. If pip can't
+# find wheels on a very new interpreter (e.g. 3.14), use a 3.11-3.12 venv.
+numpy
+scikit-learn
+skl2onnx
+onnx

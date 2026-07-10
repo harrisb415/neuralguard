@@ -4,6 +4,7 @@
 /bin/
 /obj/
 /dist/
+/models/
 *.exe
 *.dll
 *.sys
