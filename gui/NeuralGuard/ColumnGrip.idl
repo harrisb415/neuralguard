@@ -1,0 +1,11 @@
+namespace NeuralGuard
+{
+    // A column-resize handle: a Control that shows the horizontal-resize (SizeWestEast)
+    // cursor on hover. WinUI's ProtectedCursor is protected, so a custom control is the
+    // only way to change the cursor for a resize grip.
+    [default_interface]
+    unsealed runtimeclass ColumnGrip : Microsoft.UI.Xaml.Controls.Control
+    {
+        ColumnGrip();
+    }
+}

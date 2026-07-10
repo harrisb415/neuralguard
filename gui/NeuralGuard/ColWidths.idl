@@ -1,0 +1,14 @@
+namespace NeuralGuard
+{
+    // Shared, bindable column widths so the header and every data row stay in
+    // lockstep. Created in code and placed in Application.Resources as "ColW".
+    runtimeclass ColWidths : Microsoft.UI.Xaml.Data.INotifyPropertyChanged
+    {
+        ColWidths();
+        Microsoft.UI.Xaml.GridLength W0;
+        Microsoft.UI.Xaml.GridLength W1;
+        Microsoft.UI.Xaml.GridLength W2;
+        Microsoft.UI.Xaml.GridLength W3;
+        Microsoft.UI.Xaml.GridLength W4;
+    }
+}

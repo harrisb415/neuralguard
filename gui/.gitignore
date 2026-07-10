@@ -1,0 +1,30 @@
+# Build output (per-platform / per-config dirs, at any depth)
+[Xx]64/
+[Xx]86/
+[Aa][Rr][Mm]64/
+[Dd]ebug/
+[Rr]elease/
+[Bb]in/
+[Oo]bj/
+
+# C++/WinRT + XAML compiler output (regenerated every build)
+Generated Files/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+*.aps
+*.VC.db
+*.VC.opendb
+
+# NuGet (restored via packages.config -> `nuget restore` / msbuild /t:Restore)
+packages/
+*.nupkg
+
+# Build intermediates that can leak outside the dirs above
+*.tlog
+*.ipch
+*.pdb
+*.obj
+*.pch

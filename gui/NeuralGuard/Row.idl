@@ -1,0 +1,15 @@
+namespace NeuralGuard
+{
+    // A generic table row: five display columns + a hidden DB id used by
+    // right-click actions (delete a rule, block a destination, ...).
+    runtimeclass Row
+    {
+        Row(Int64 id, String c0, String c1, String c2, String c3, String c4);
+        Int64 Id{ get; };
+        String C0{ get; };
+        String C1{ get; };
+        String C2{ get; };
+        String C3{ get; };
+        String C4{ get; };
+    }
+}
