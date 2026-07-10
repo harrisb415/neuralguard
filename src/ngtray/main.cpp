@@ -158,12 +158,18 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
 }  // namespace
 
 int WINAPI wWinMain(HINSTANCE hInst, HINSTANCE, PWSTR pCmdLine, int) {
-    // Single instance - don't stack tray icons.
-    CreateMutexW(nullptr, TRUE, L"NeuralGuard_ngtray_singleton");
-    if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
-
     g_hInst = hInst;
     const bool openDash = pCmdLine && wcsstr(pCmdLine, L"dashboard");
+
+    // Single instance - don't stack tray icons. If a tray is already running and
+    // this invocation asked to open the dashboard (`ngtray dashboard`), honor
+    // that (focus it if open, else launch it) before exiting, instead of silently
+    // doing nothing.
+    CreateMutexW(nullptr, TRUE, L"NeuralGuard_ngtray_singleton");
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        if (openDash) OpenDashboard();
+        return 0;
+    }
 
     WNDCLASSW wc{};
     wc.lpfnWndProc = WndProc;

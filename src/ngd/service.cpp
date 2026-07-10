@@ -8,6 +8,7 @@
 #include "ngd/enforce.h"
 
 #include <windows.h>
+#include <tlhelp32.h>
 
 #include <cstdio>
 #include <string>
@@ -26,6 +27,27 @@ std::wstring Wide(const std::string& s) {
     std::wstring w(n, 0);
     MultiByteToWideChar(CP_UTF8, 0, s.c_str(), (int)s.size(), w.data(), n);
     return w;
+}
+
+// Terminate any manually-launched enforcer (another ngd.exe running `enforce`).
+// A dynamic enforce session and the service both claim the same WFP provider,
+// so the service can't start while one is live. Killing the manual enforcer
+// closes its dynamic WFP session, which auto-removes its provider/filters
+// (fail-open by design), leaving the provider free for the service to claim.
+void StopManualEnforcers() {
+    DWORD self = GetCurrentProcessId();
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    PROCESSENTRY32W pe{}; pe.dwSize = sizeof(pe);
+    bool killed = false;
+    for (BOOL ok = Process32FirstW(snap, &pe); ok; ok = Process32NextW(snap, &pe)) {
+        if (pe.th32ProcessID == self) continue;                 // never our own process
+        if (lstrcmpiW(pe.szExeFile, L"ngd.exe") != 0) continue;
+        HANDLE p = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pe.th32ProcessID);
+        if (p) { TerminateProcess(p, 0); WaitForSingleObject(p, 3000); CloseHandle(p); killed = true; }
+    }
+    CloseHandle(snap);
+    if (killed) Sleep(500);   // let the killed enforcer's dynamic WFP session tear down
 }
 
 void SetState(DWORD state, DWORD exitCode = 0) {
@@ -117,6 +139,10 @@ int ServiceInstall(const char* dbPath) {
     fa.cActions = 3;
     fa.lpsaActions = acts;
     ChangeServiceConfig2W(svc, SERVICE_CONFIG_FAILURE_ACTIONS, &fa);
+
+    // Free the WFP provider from any manually-launched enforcer, or the
+    // service's own enforcer can't claim it and the service exits at once.
+    StopManualEnforcers();
 
     if (!StartServiceW(svc, 0, nullptr))
         fprintf(stderr, "installed, but StartService failed: %lu\n", GetLastError());
