@@ -21,6 +21,12 @@ class DnsWatcher;
 class Enforcer;
 class HabitTracker;
 
+// Read-only inspector: prints the stable (app, port) permits `ngd enforce` would
+// install right now - the same query, including Phase 4d demotion exclusions -
+// without opening WFP or needing admin. Returns the permit count. Used by
+// `ngd baseline` to see the effect of ML demotions without enforcing.
+int PrintBaseline(Db& db);
+
 class EnforceDaemon {
 public:
     EnforceDaemon(Db& db, IdentityResolver& id, DnsWatcher& dns, Enforcer& enf,

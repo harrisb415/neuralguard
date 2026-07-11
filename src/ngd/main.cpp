@@ -86,11 +86,14 @@ std::string ModelPathFor(const char* dbPath, const char* name) {
     return dir + "\\" + name;
 }
 
-// Configure shadow-mode scoring on `collector` for `dbPath` unless ml_mode=off.
+// Configure scoring on `collector` for `dbPath` unless ml_mode=off. In active
+// mode, scores over their gate also write ml_flags (demote/review).
 void MaybeEnableScoring(ng::FlowCollector& collector, ng::Db& db, const char* dbPath) {
-    if (MetaGet(db, "ml_mode", "shadow") != "off")
+    std::string mode = MetaGet(db, "ml_mode", "shadow");
+    if (mode != "off")
         collector.enableScoring(ModelPathFor(dbPath, "anomaly.onnx"),
-                                ModelPathFor(dbPath, "supervised.onnx"));
+                                ModelPathFor(dbPath, "supervised.onnx"),
+                                mode == "active");
 }
 
 void PrintUsage() {
@@ -107,10 +110,15 @@ void PrintUsage() {
         "  ngd promote [db]              Show stable vs provisional (app, port) pairs.\n"
         "  ngd enforce [db] [seconds]    LIVE: permit the stable baseline, default-deny the\n"
         "                                rest, and prompt the tray on novel connections.\n"
+        "  ngd baseline [db]             Print the stable permits enforce would install\n"
+        "                                (read-only; shows Phase 4d demotion effects).\n"
         "  ngd features [db] [seconds]   Collect completed-flow features (Phase 4 ML data).\n"
         "  ngd features on|off [db]      Toggle feature archival by the enforce/record daemon.\n"
         "  ngd features mode [val] [db]  Show/set ML scoring: shadow (default) | active | off.\n"
-        "  ngd features dump [db]        Show recent archived feature rows (with anomaly score).\n"
+        "  ngd features dump [db]        Show recent archived feature rows + scores.\n"
+        "  ngd features flags [db]       Show active-mode demotions / review items.\n"
+        "  ngd features demote <app> <port> [db]  Manually distrust an (app,port) so it prompts.\n"
+        "  ngd features clear [db]       Clear ML flags (re-trust demoted apps).\n"
         "  ngd features purge [db] [days] Delete feature rows older than [days] (default 30).\n"
         "  ngd -h | --help | /?          Show this help.\n\n"
         "Recording requires an elevated (Administrator) prompt.\n");
@@ -517,10 +525,44 @@ int RunFeaturesDump(ng::Db& db) {
     return 0;
 }
 
+// Phase 4d: show the ML flags (active-mode demotions + anomaly review items).
+int RunFeaturesFlags(ng::Db& db) {
+    sqlite3* h = db.handle();
+    printf("  %-8s  %-7s  %-24s  %-22s  %6s\n", "time", "kind", "app", "dest:port", "score");
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(h,
+            "SELECT ts_utc, kind, COALESCE(process_label,''), COALESCE(dest,''), remote_port, score"
+            " FROM ml_flags ORDER BY id DESC LIMIT 60;", -1, &s, nullptr) != SQLITE_OK)
+        return 1;
+    int n = 0;
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        std::string ts  = (const char*)sqlite3_column_text(s, 0);
+        std::string tm  = ts.size() >= 19 ? ts.substr(11, 8) : ts;
+        std::string app = (const char*)sqlite3_column_text(s, 2);
+        if (app.size() > 24) app = app.substr(0, 23) + ">";
+        std::string dp = std::string((const char*)sqlite3_column_text(s, 3)) + ":" +
+                         std::to_string(sqlite3_column_int(s, 4));
+        if (dp.size() > 22) dp = dp.substr(0, 21) + ">";
+        printf("  %-8s  %-7s  %-24s  %-22s  %6.2f\n", tm.c_str(),
+               (const char*)sqlite3_column_text(s, 1), app.c_str(), dp.c_str(),
+               sqlite3_column_double(s, 5));
+        ++n;
+    }
+    sqlite3_finalize(s);
+    if (!n) printf("  (no ML flags - nothing scored over the confidence gate in active mode)\n");
+    else printf("\n'demote' rows drop that (app,port) from the auto-permit baseline (it will prompt);\n"
+                "'review' rows are advisory. `ngd features clear` re-trusts them.\n");
+    return 0;
+}
+
 // ngd features                    - collect completed-flow features (needs admin)
 // ngd features <db> [seconds]     - collect into <db>, optional timed run
 // ngd features on|off [db]        - toggle archival by the enforce/record daemon
-// ngd features dump [db]          - show recent archived feature rows
+// ngd features mode [val] [db]    - show/set ML scoring: shadow | active | off
+// ngd features dump [db]          - show recent archived feature rows + scores
+// ngd features flags [db]         - show active-mode demotions / review items
+// ngd features demote <app> <port> [db] - manually distrust an (app,port)
+// ngd features clear [db]         - clear ML flags (re-trust demoted apps)
 // ngd features purge [db] [days]  - delete rows older than [days] (default 30)
 int RunFeatures(int argc, char** argv) {
     const char* sub = (argc >= 3) ? argv[2] : nullptr;
@@ -542,11 +584,59 @@ int RunFeatures(int argc, char** argv) {
         return 0;
     }
 
+    // `demote <app_path> <port> [db]` manually distrusts an (app, port): it drops
+    // from the auto-permit baseline and prompts on its next connection, exactly
+    // like an ML demotion. The inverse of adding a permit rule; undo with `clear`.
+    if (sub && strcmp(sub, "demote") == 0) {
+        if (argc < 5) {
+            fprintf(stderr, "usage: ngd features demote <app_path> <port> [db]\n");
+            return 1;
+        }
+        const char* app  = argv[3];
+        int         port = atoi(argv[4]);
+        const char* dbp  = (argc >= 6) ? argv[5] : "ngpolicy.db";
+        ng::Db db;
+        if (!db.open(dbp)) return 1;
+        sqlite3_stmt* s = nullptr;
+        sqlite3_prepare_v2(db.handle(),
+            "INSERT OR IGNORE INTO ml_flags"
+            "(ts_utc,kind,process_key,process_label,app_path,dest,remote_port,protocol,score)"
+            " VALUES(?,'demote','','(manual)',?,'(manual)',?,6,1.0);", -1, &s, nullptr);
+        sqlite3_bind_text(s, 1, ng::util::IsoNow().c_str(), -1, SQLITE_TRANSIENT);
+        sqlite3_bind_text(s, 2, app, -1, SQLITE_TRANSIENT);
+        sqlite3_bind_int(s, 3, port);
+        int rc = sqlite3_step(s);
+        sqlite3_finalize(s);
+        if (rc != SQLITE_DONE) { fprintf(stderr, "demote failed: %s\n", sqlite3_errmsg(db.handle())); return 1; }
+        sqlite3_exec(db.handle(), "UPDATE meta SET v=CAST(v AS INTEGER)+1 WHERE k='rules_gen';",
+                     nullptr, nullptr, nullptr);
+        printf("demoted %s:%d - it will prompt on its next connection (undo with `ngd features clear`).\n",
+               app, port);
+        return 0;
+    }
+
+    // `threshold <mal> [anom] [db]` sets/shows the active-mode confidence gates.
+    if (sub && strcmp(sub, "threshold") == 0) {
+        const char* mal  = (argc >= 4) ? argv[3] : nullptr;
+        const char* anom = (argc >= 5) ? argv[4] : nullptr;
+        const char* dbp  = (argc >= 6) ? argv[5] : "ngpolicy.db";
+        ng::Db db;
+        if (!db.open(dbp)) return 1;
+        if (mal)  MetaSet(db, "ml_malicious_threshold", mal);
+        if (anom) MetaSet(db, "ml_anomaly_threshold", anom);
+        printf("ML gates: demote at P(malicious) >= %s, review at anomaly <= %s\n",
+               MetaGet(db, "ml_malicious_threshold", "0.9").c_str(),
+               MetaGet(db, "ml_anomaly_threshold", "-0.15").c_str());
+        return 0;
+    }
+
     const bool isDump  = sub && strcmp(sub, "dump") == 0;
     const bool isPurge = sub && strcmp(sub, "purge") == 0;
     const bool isOn    = sub && strcmp(sub, "on") == 0;
     const bool isOff   = sub && strcmp(sub, "off") == 0;
-    const bool isCmd   = isDump || isPurge || isOn || isOff;
+    const bool isFlags = sub && strcmp(sub, "flags") == 0;
+    const bool isClear = sub && strcmp(sub, "clear") == 0;
+    const bool isCmd   = isDump || isPurge || isOn || isOff || isFlags || isClear;
 
     const char* dbPath = "ngpolicy.db";
     int seconds = 0, days = 30;
@@ -561,7 +651,7 @@ int RunFeatures(int argc, char** argv) {
     // Only live collection needs admin (ESTATS enable); the rest are DB-only.
     if (!isCmd && !IsElevated()) {
         fprintf(stderr, "ngd features (collection) needs Administrator - enabling TCP ESTATS "
-                        "data collection is privileged. (dump/purge/on/off do not.)\n");
+                        "data collection is privileged. (dump/flags/clear/purge/on/off/mode do not.)\n");
         return 1;
     }
 
@@ -575,6 +665,14 @@ int RunFeatures(int argc, char** argv) {
         return 0;
     }
     if (isDump) return RunFeaturesDump(db);
+    if (isFlags) return RunFeaturesFlags(db);
+    if (isClear) {
+        sqlite3_exec(db.handle(), "DELETE FROM ml_flags;", nullptr, nullptr, nullptr);
+        sqlite3_exec(db.handle(), "UPDATE meta SET v=CAST(v AS INTEGER)+1 WHERE k='rules_gen';",
+                     nullptr, nullptr, nullptr);
+        printf("ML flags cleared; demoted apps are trusted again on the next enforce reapply.\n");
+        return 0;
+    }
     if (isPurge) {
         long long n = ng::PurgeFlowFeatures(db, days);
         if (n < 0) { fprintf(stderr, "purge failed\n"); return 1; }
@@ -621,6 +719,14 @@ int main(int argc, char** argv) {
     // `features` has sub-subcommands (dump/purge), so handle it before the flat
     // mode parser below treats argv[2] as a db path.
     if (argc >= 2 && strcmp(argv[1], "features") == 0) return RunFeatures(argc, argv);
+
+    // `baseline` prints the stable permits enforce would install (read-only, no
+    // admin) - shows the effect of Phase 4d ML demotions without enforcing.
+    if (argc >= 2 && strcmp(argv[1], "baseline") == 0) {
+        ng::Db db;
+        if (!db.open(argc >= 3 ? argv[2] : "ngpolicy.db")) return 1;
+        return ng::PrintBaseline(db) < 0 ? 1 : 0;
+    }
 
     const char* mode = "record";
     const char* dbPath = "ngpolicy.db";

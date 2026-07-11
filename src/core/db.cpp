@@ -88,9 +88,30 @@ const char* kSchema =
     // gates future collection folded into the enforce/record daemon.
     "INSERT OR IGNORE INTO meta(k,v) VALUES('feature_archive','0');"
     // ML scoring mode: 'shadow' = score + log, zero effect on rules (default,
-    // even across upgrades); 'active' = scores may feed demotions (Phase 4d,
-    // not yet wired); 'off' = don't score.
-    "INSERT OR IGNORE INTO meta(k,v) VALUES('ml_mode','shadow');";
+    // even across upgrades); 'active' = high scores may feed demotions / review
+    // flags (Phase 4d); 'off' = don't score.
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('ml_mode','shadow');"
+    // Phase 4d: model outputs that crossed a confidence gate, in ACTIVE mode.
+    // kind='demote' (supervised P(malicious) >= threshold) excludes that
+    // (app,port,proto) from the auto-permit baseline -> it drops to default-deny
+    // and PROMPTS next time (never an auto-block). kind='review' (anomaly score
+    // <= threshold) is advisory only - shown to the user, touches no rule.
+    "CREATE TABLE IF NOT EXISTS ml_flags("
+    "  id INTEGER PRIMARY KEY,"
+    "  ts_utc        TEXT,"
+    "  kind          TEXT,"           // 'demote' | 'review'
+    "  process_key   TEXT,"
+    "  process_label TEXT,"
+    "  app_path      TEXT,"           // normalized C:\...  (the baseline exclusion key)
+    "  dest          TEXT,"
+    "  remote_port   INTEGER,"
+    "  protocol      INTEGER,"
+    "  score         REAL,"
+    "  UNIQUE(kind, app_path, remote_port, protocol));"
+    // Confidence gates for active mode. Supervised >= malicious => demote;
+    // anomaly <= anomaly (more negative = more anomalous) => review.
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('ml_malicious_threshold','0.9');"
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('ml_anomaly_threshold','-0.15');";
 }  // namespace
 
 bool Db::open(const char* path) {

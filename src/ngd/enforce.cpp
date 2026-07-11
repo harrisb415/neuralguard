@@ -36,19 +36,31 @@ bool IsExemptRemote(const std::string& r) {
     return false;
 }
 
+// The stable-permit baseline query, shared by installBaseline (which installs
+// each row as a WFP permit) and PrintBaseline (read-only inspector) so the two
+// can never drift. Phase 4d: an (app,port,proto) the ML demoted in active mode
+// is excluded here, so it drops to default-deny and prompts next time. This is
+// the ONLY place ML scores affect enforcement, and only ever removes a permit
+// (never adds a block) - a demoted app still gets the block-notify-retry prompt
+// like any other novel connection.
+static const char* const kBaselineSQL =
+    "SELECT pi.image_path, fe.protocol, fe.remote_port,"
+    " COUNT(DISTINCT fe.local_port || '|' || fe.remote_addr) AS conns"
+    " FROM flow_events fe JOIN process_identity pi ON fe.image_id = pi.id"
+    " WHERE fe.remote_port > 0 AND fe.remote_port < 49152 AND pi.image_path LIKE '_:\\%'"
+    "   AND fe.verdict IN ('ALLOW','CAPALLOW')"
+    "   AND NOT EXISTS (SELECT 1 FROM ml_flags m WHERE m.kind='demote'"
+    "     AND m.app_path = pi.image_path AND m.remote_port = fe.remote_port"
+    "     AND m.protocol = fe.protocol)"
+    " GROUP BY pi.image_path, fe.protocol, fe.remote_port"
+    " HAVING conns >= 3;";
+
 }  // namespace
 
 int EnforceDaemon::installBaseline() {
     sqlite3* h = db_.handle();
     sqlite3_stmt* s = nullptr;
-    sqlite3_prepare_v2(h,
-        "SELECT pi.image_path, fe.protocol, fe.remote_port,"
-        " COUNT(DISTINCT fe.local_port || '|' || fe.remote_addr) AS conns"
-        " FROM flow_events fe JOIN process_identity pi ON fe.image_id = pi.id"
-        " WHERE fe.remote_port > 0 AND fe.remote_port < 49152 AND pi.image_path LIKE '_:\\%'"
-        "   AND fe.verdict IN ('ALLOW','CAPALLOW')"
-        " GROUP BY pi.image_path, fe.protocol, fe.remote_port"
-        " HAVING conns >= 3;", -1, &s, nullptr);
+    sqlite3_prepare_v2(h, kBaselineSQL, -1, &s, nullptr);
     int permits = 0;
     while (sqlite3_step(s) == SQLITE_ROW) {
         const char* path = (const char*)sqlite3_column_text(s, 0);
@@ -358,6 +370,25 @@ bool EnforceDaemon::run(int seconds) {
     WSACleanup();
     printf("\nngd enforce: reverted (removed %d filters).\n", removed);
     return true;
+}
+
+int PrintBaseline(Db& db) {
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db.handle(), kBaselineSQL, -1, &s, nullptr) != SQLITE_OK) {
+        fprintf(stderr, "baseline query failed: %s\n", sqlite3_errmsg(db.handle()));
+        return -1;
+    }
+    printf("  %-5s %6s %6s  %s\n", "proto", "port", "conns", "app");
+    int n = 0;
+    while (sqlite3_step(s) == SQLITE_ROW) {
+        const char* path = (const char*)sqlite3_column_text(s, 0);
+        printf("  %-5d %6d %6d  %s\n", sqlite3_column_int(s, 1), sqlite3_column_int(s, 2),
+               sqlite3_column_int(s, 3), path ? path : "");
+        ++n;
+    }
+    sqlite3_finalize(s);
+    printf("\n%d stable permit(s) would be installed (Phase 4d demotions excluded).\n", n);
+    return n;
 }
 
 }  // namespace ng

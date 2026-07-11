@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <map>
 #include <set>
 #include <string>
@@ -76,7 +77,7 @@ struct ActiveFlow {
     std::string remoteIp;
     unsigned    remotePort = 0;
     unsigned    localPort = 0;
-    std::string procKey, procLabel;
+    std::string procKey, procLabel, procPath;
     unsigned long long bytesIn = 0, bytesOut = 0;
 };
 
@@ -125,6 +126,29 @@ bool FlowCollector::run(int seconds) {
         printf("anomaly model loaded (shadow mode).\n");
     if (!supervisedPath_.empty() && supervised_.load(supervisedPath_))
         printf("supervised model loaded (shadow mode).\n");
+
+    // Phase 4d: in active mode, high scores over their confidence gate become
+    // ml_flags (demote/review). Read the gates once; prepare the writer.
+    double malThresh = 0.9, anomThresh = -0.15;
+    sqlite3_stmt* mlIns = nullptr;
+    if (active_) {
+        auto readThresh = [&](const char* k, double dflt) {
+            std::lock_guard<std::mutex> lk(db_.mutex());
+            sqlite3_stmt* s = nullptr; double v = dflt;
+            if (sqlite3_prepare_v2(db_.handle(), "SELECT v FROM meta WHERE k=?;", -1, &s, nullptr) == SQLITE_OK) {
+                sqlite3_bind_text(s, 1, k, -1, SQLITE_TRANSIENT);
+                if (sqlite3_step(s) == SQLITE_ROW) { const char* t = (const char*)sqlite3_column_text(s, 0); if (t) v = atof(t); }
+                sqlite3_finalize(s);
+            }
+            return v;
+        };
+        malThresh = readThresh("ml_malicious_threshold", 0.9);
+        anomThresh = readThresh("ml_anomaly_threshold", -0.15);
+        sqlite3_prepare_v2(db_.handle(),
+            "INSERT OR IGNORE INTO ml_flags(ts_utc,kind,process_key,process_label,app_path,dest,remote_port,protocol,score)"
+            " VALUES(?,?,?,?,?,?,?,?,?);", -1, &mlIns, nullptr);
+        printf("ML ACTIVE: demote at P(malicious) >= %.2f, review at anomaly <= %.2f.\n", malThresh, anomThresh);
+    }
 
     WSADATA wsa{}; WSAStartup(MAKEWORD(2, 2), &wsa);
     stopEvent_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -189,6 +213,31 @@ bool FlowCollector::run(int seconds) {
         if (haveAnom) sqlite3_bind_double(ins, 11, anomScore); else sqlite3_bind_null(ins, 11);
         if (haveMal)  sqlite3_bind_double(ins, 12, malScore);  else sqlite3_bind_null(ins, 12);
         if (sqlite3_step(ins) == SQLITE_DONE) ++written_;
+
+        // Phase 4d (active mode, same lock): scores over their gate -> ml_flags.
+        // 'demote' removes the (app,port) permit next reapply; 'review' is advisory.
+        if (active_ && mlIns) {
+            bool demote = haveMal && malScore >= malThresh && !f.procPath.empty();
+            bool review = haveAnom && anomScore <= anomThresh;
+            auto flag = [&](const char* kind, double sc) {
+                sqlite3_reset(mlIns); sqlite3_clear_bindings(mlIns);
+                bindText(mlIns, 1, util::IsoNow());
+                bindText(mlIns, 2, kind);
+                bindText(mlIns, 3, f.procKey);
+                bindText(mlIns, 4, f.procLabel);
+                bindText(mlIns, 5, f.procPath);
+                bindText(mlIns, 6, dest);
+                sqlite3_bind_int(mlIns, 7, (int)f.remotePort);
+                sqlite3_bind_int(mlIns, 8, IPPROTO_TCP);
+                sqlite3_bind_double(mlIns, 9, sc);
+                sqlite3_step(mlIns);
+            };
+            if (demote) flag("demote", malScore);
+            if (review) flag("review", anomScore);
+            if (demote)   // baseline changed -> nudge a running enforce daemon to reapply
+                sqlite3_exec(db_.handle(),
+                    "UPDATE meta SET v=CAST(v AS INTEGER)+1 WHERE k='rules_gen';", nullptr, nullptr, nullptr);
+        }
     };
 
     for (;;) {
@@ -228,6 +277,7 @@ bool FlowCollector::run(int seconds) {
                     Identity idn = ResolvePid(id_, r2.dwOwningPid);
                     f.procKey = idn.key;
                     f.procLabel = idn.label;
+                    f.procPath = idn.path;   // baseline exclusion key for 4d demotions
                     ReadEstats(row, f.bytesIn, f.bytesOut);
                     active.emplace(key, std::move(f));
                 } else {
@@ -250,6 +300,7 @@ bool FlowCollector::run(int seconds) {
     }
 
     sqlite3_finalize(ins);
+    if (mlIns) sqlite3_finalize(mlIns);
     CloseHandle(static_cast<HANDLE>(stopEvent_));
     stopEvent_ = nullptr;
     WSACleanup();

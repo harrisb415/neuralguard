@@ -597,7 +597,12 @@ namespace winrt::NeuralGuard::implementation
         auto fe = sender.try_as<FrameworkElement>();
         std::string mode = fe ? to_string(unbox_value_or<hstring>(fe.Tag(), L"shadow")) : "shadow";
         MetaSet("ml_mode", mode.c_str());
-        Notify(L"ML scoring mode: " + to_hstring(mode) + L".", InfoBarSeverity::Success);
+        if (mode == "active")
+            Notify(L"Active scoring on. A strongly-malicious score can now demote a trusted app so it "
+                   L"prompts again (it never auto-blocks). Takes effect next time enforcement runs. "
+                   L"Use trained models, not the placeholders.", InfoBarSeverity::Warning);
+        else
+            Notify(L"ML scoring mode: " + to_hstring(mode) + L".", InfoBarSeverity::Success);
     }
 
     void MainWindow::RefreshServiceStatus()

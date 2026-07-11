@@ -217,7 +217,9 @@
                             <RadioButton x:Name="Ml1" Tag="shadow" GroupName="mlmode" Checked="OnMlModeChanged"
                                          Content="Shadow - score and log only, no effect on rules"/>
                             <RadioButton x:Name="Ml2" Tag="active" GroupName="mlmode" Checked="OnMlModeChanged"
-                                         IsEnabled="False" Content="Active - let scores propose changes (coming soon)"/>
+                                         Content="Active - a strongly-malicious score can demote a trusted app so it prompts again"/>
+                            <TextBlock Text="Active never auto-blocks: a demoted app simply loses its automatic pass and asks you the next time it connects, exactly like a brand-new app. Only enable this once the models are trained on your own traffic - the shipped models are placeholders. Demotions show under Flows; clear them with `ngd features clear`."
+                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="24,2,0,0"/>
                         </StackPanel>
                     </StackPanel>
                 </ScrollViewer>

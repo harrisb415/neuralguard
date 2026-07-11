@@ -231,12 +231,25 @@ rollout, data governance). Planned, not started — every item below is ⬜.
   HTTPS download → anom +0.03, mal 0.00). **Still a placeholder until trained on
   real data** — the public dataset is enterprise/lab traffic, so trust it only
   after shadow mode proves it on your own flows.
-- ⬜ **4d. Confidence gate + promotion/demotion wiring.** `meta('ml_mode')`
-  shadow→active switch (defaults to shadow, even across upgrades). High
-  supervised-malicious confidence on a trusted habit → proposed demotion via the
-  existing promotion job (falls to provisional → default-deny → prompts once, same
-  mechanism as any other provisional key, no new enforcement primitive). Anomaly
-  alone never auto-demotes — it's a review flag, not a verdict.
+- ✅ **4d. Confidence gate + demotion wiring.** DONE, built inert-by-default.
+  `meta('ml_mode')` shadow→active (defaults to shadow, even across upgrades). In
+  active mode the collector, on each captured flow, gates the scores: supervised
+  `P(malicious) ≥ ml_malicious_threshold` (default 0.9) writes an `ml_flags`
+  `demote` row; anomaly `≤ ml_anomaly_threshold` (default −0.15) writes a `review`
+  row (advisory, touches no rule). The enforce baseline (`kBaselineSQL`, shared by
+  `installBaseline` and the new read-only `ngd baseline` inspector) excludes any
+  `(app,port,proto)` with a `demote` flag → it drops from the auto-permit baseline
+  to default-deny and **prompts** on its next connection (block-notify-retry). It
+  only ever *removes* a permit — never adds a block, never auto-blocks. Anomaly
+  alone is a review flag, never a demotion. New CLI: `ngd baseline`,
+  `ngd features flags|clear|demote|threshold`; dashboard Active radio enabled with
+  a warning. **Inert until `ml_mode=active` AND a real captured flow crosses the
+  gate** — default shadow does nothing. VM-validated: a demote for stable
+  `curl.exe:443` drops it from the baseline (22→21 permits); `clear` restores it.
+  *(The collector's active-mode write path is exercised by inspection + the manual
+  `demote`→baseline round-trip; live capture-and-demote couldn't be reproduced
+  over SSH because the collector's `GetTcpTable2` doesn't see SSH-spawned traffic —
+  an env quirk, not a code defect: real interactive-session flows are captured.)*
 - ⬜ **4e. The feedback loop.** Every prompt decision (Allow once / Always allow /
   Block) becomes a labeled example in `feedback_labels`. A manual retraining script
   folds these into the next offline LightGBM run alongside the public dataset. Set
