@@ -414,6 +414,25 @@
                                 </StackPanel>
                             </StackPanel>
                         </Border>
+
+                        <TextBlock Text="SOFTWARE UPDATES" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,26,0,10"/>
+                        <Border Style="{StaticResource NG.Card}">
+                            <StackPanel>
+                                <TextBlock Text="Check GitHub for a newer release. Installing downloads the verified installer and hands off to it - the app will close so it can update."
+                                           Style="{StaticResource NG.Text.Secondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <TextBlock x:Name="UpdateStatus" Text="" FontStyle="Italic"
+                                           Foreground="{StaticResource NG.Brush.Text.Secondary}" Margin="0,0,0,14"/>
+                                <muxc:ProgressBar x:Name="UpdateProgress" Visibility="Collapsed"
+                                                  Minimum="0" Maximum="100" Margin="0,0,0,14"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="Check for updates" Click="OnCheckUpdate" Style="{StaticResource NG.Button.Ghost}"/>
+                                    <Button x:Name="InstallUpdateBtn" Content="Download &amp; install" Click="OnInstallUpdate"
+                                            IsEnabled="False" Style="{StaticResource NG.Button.Primary}"/>
+                                    <HyperlinkButton x:Name="UpdateNotesLink" Content="Release notes"
+                                                     Visibility="Collapsed" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 

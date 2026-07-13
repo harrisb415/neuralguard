@@ -64,3 +64,7 @@ if ($LASTEXITCODE -ne 0) { throw "ISCC (Inno Setup compile) failed" }
 
 $setupExe = Join-Path $dist "NeuralGuard-Setup-$version.exe"
 Write-Host "`nBuilt: $setupExe" -ForegroundColor Green
+
+# --- 5. emit the in-app updater manifest (attach it to the release too) -------
+Write-Host "`n== Updater manifest ==" -ForegroundColor Cyan
+& (Join-Path $PSScriptRoot "make-manifest.ps1")

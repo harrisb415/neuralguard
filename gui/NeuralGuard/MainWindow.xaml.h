@@ -40,6 +40,8 @@ namespace winrt::NeuralGuard::implementation
                                   winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void OnClearFlags(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnExportFeedback(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnCheckUpdate(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnInstallUpdate(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
 
     private:
         void DemoteApp(winrt::hstring const& appPath, int port, int proto);   // Phase 4d: manual distrust

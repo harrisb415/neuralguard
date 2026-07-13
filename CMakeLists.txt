@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(NeuralGuard VERSION 1.2.1 LANGUAGES C CXX)
+project(NeuralGuard VERSION 1.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -35,7 +35,8 @@ add_library(ngcore STATIC
   src/core/enforcer.cpp
   src/core/flowstats.cpp
   src/core/scorer.cpp
-  src/core/prompt.cpp)
+  src/core/prompt.cpp
+  src/core/updater.cpp)
 target_include_directories(ngcore PUBLIC src)
 # ONNX Runtime headers (C++ API) for the anomaly scorer. Headers only - the DLL
 # is loaded dynamically at runtime, so nothing links its import lib and the
@@ -45,7 +46,8 @@ target_compile_definitions(ngcore PUBLIC ${NG_DEFS})
 target_compile_options(ngcore PRIVATE $<$<CXX_COMPILER_ID:MSVC>:/W4>)
 # fwpuclnt = WFP API; uuid = predefined FWPM_LAYER_*/CONDITION_* GUIDs;
 # iphlpapi = GetTcpTable2 + TCP ESTATS (flow bytes); psapi = PID -> image path.
-target_link_libraries(ngcore PUBLIC sqlite3 bcrypt crypt32 wintrust tdh advapi32 ws2_32 fwpuclnt uuid iphlpapi psapi)
+# winhttp = the in-app updater's HTTPS manifest/installer fetch (src/core/updater.cpp).
+target_link_libraries(ngcore PUBLIC sqlite3 bcrypt crypt32 wintrust tdh advapi32 ws2_32 fwpuclnt uuid iphlpapi psapi winhttp)
 
 # --- ngmon (Phase 0): WFP net-event printer ---------------------------------
 add_executable(ngmon src/ngmon/main.cpp)

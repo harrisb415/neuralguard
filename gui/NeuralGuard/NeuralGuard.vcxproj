@@ -99,6 +99,8 @@
       <LanguageStandard Condition="'$(VisualStudioVersion)' &gt;= '18.0'">stdcpp20</LanguageStandard>
       <LanguageStandard Condition="'$(VisualStudioVersion)' &lt; '18.0'">stdcpp17</LanguageStandard>
       <AdditionalOptions>%(AdditionalOptions) /bigobj</AdditionalOptions>
+      <!-- so the shared in-app updater can be included as "core/updater.h" -->
+      <AdditionalIncludeDirectories>$(ProjectDir)..\..\src;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
@@ -155,8 +157,14 @@
       <CompileAs>CompileAsC</CompileAs>
       <PreprocessorDefinitions>SQLITE_ENABLE_MATH_FUNCTIONS;SQLITE_THREADSAFE=1;SQLITE_OMIT_LOAD_EXTENSION;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
+    <!-- Shared in-app updater, compiled straight from src/core (no PCH, like sqlite). -->
+    <ClCompile Include="..\..\src\core\updater.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\src\core\updater.h" />
+    <ClInclude Include="..\..\src\core\version.h" />
     <ClInclude Include="deps\sqlite3.h" />
     <ClInclude Include="Db.h" />
     <ClInclude Include="Row.h" />

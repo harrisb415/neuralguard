@@ -42,6 +42,11 @@ OutputBaseFilename=NeuralGuard-Setup-{#AppVersion}
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; Let the Restart Manager close any app holding a file we're about to replace
+; (belt-and-suspenders alongside the taskkill in [Code]); needed so an in-app
+; update over a running dashboard can overwrite locked binaries/DLLs.
+CloseApplications=yes
+RestartApplications=no
 UninstallDisplayIcon={app}\ngtray.exe
 UninstallDisplayName=NeuralGuard {#AppVersion}
 
@@ -84,7 +89,7 @@ var
 begin
   if CurStep = ssInstall then
   begin
-    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ngtray.exe /IM NeuralGuard.exe',
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ngtray.exe /IM NeuralGuard.exe /IM ngd.exe',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
   end;
 end;
@@ -103,7 +108,7 @@ var
 begin
   if CurUninstallStep = usUninstall then
   begin
-    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ngtray.exe /IM NeuralGuard.exe',
+    Exec(ExpandConstant('{sys}\taskkill.exe'), '/F /IM ngtray.exe /IM NeuralGuard.exe /IM ngd.exe',
       '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
     // MsgBox is a blocking modal dialog - /VERYSILENT only suppresses the

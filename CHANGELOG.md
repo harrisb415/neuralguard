@@ -5,6 +5,27 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.3.0] - 2026-07-12
+
+### Added
+
+- **In-app updater.** NeuralGuard can now update itself from its GitHub
+  Releases. `ngd update [check|apply]` on the CLI, and a **Software updates**
+  card in the dashboard's Settings (check, then download & install). It reads a
+  signed-by-hash `update-manifest.json` published on the latest release,
+  downloads the installer, verifies its size + SHA-256, and hands off to the
+  silent installer (which closes the running app, replaces the files, and
+  restarts). Shared `ng::Updater` (`src/core/updater.cpp`) compiled into both
+  the engine and the dashboard; `NG_VERSION` in `src/core/version.h` is the
+  build's version. Release manifests are produced by `scripts/make-manifest.ps1`
+  (run automatically by `scripts/package.ps1`). See `docs/UPDATER.md`.
+
+### Changed
+
+- The installer now uses the Restart Manager (`CloseApplications`) and also
+  force-closes `ngd.exe`, so an in-app update can replace binaries even while the
+  app is running.
+
 ## [1.2.1] - 2026-07-12
 
 ### Changed

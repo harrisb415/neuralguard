@@ -7,6 +7,7 @@
 #include "Db.h"
 #include "Row.h"
 #include "ColWidths.h"
+#include "core/updater.h"              // shared in-app updater (compiled from src/core)
 
 #include <microsoft.ui.xaml.window.h>   // IWindowNative -> HWND for the file dialogs
 
@@ -17,6 +18,7 @@
 #include <cstdlib>
 #include <ctime>
 #include <string_view>
+#include <thread>
 
 using namespace winrt;
 using namespace winrt::Windows::Foundation;
@@ -782,6 +784,83 @@ namespace winrt::NeuralGuard::implementation
         if (h == INVALID_HANDLE_VALUE) { Notify(L"Couldn't write that file.", InfoBarSeverity::Error); return; }
         DWORD wr = 0; WriteFile(h, out.data(), (DWORD)out.size(), &wr, nullptr); CloseHandle(h);
         Notify(L"Exported " + to_hstring(n) + L" label(s).", InfoBarSeverity::Success);
+    }
+
+    // --- Software updates (Settings card) -----------------------------------
+    // Shared ng::Updater runs on a background thread; UI is touched only back on
+    // the dispatcher. SCAFFOLD: capturing `this` in a detached thread assumes the
+    // window outlives the check - fine for now, revisit with a weak ref / cancel
+    // token if this ships. Not yet exercised against a real release.
+    void MainWindow::OnCheckUpdate(IInspectable const&, RoutedEventArgs const&)
+    {
+        UpdateStatus().Text(L"Checking for updates...");
+        InstallUpdateBtn().IsEnabled(false);
+        UpdateNotesLink().Visibility(Visibility::Collapsed);
+        auto dq = DispatcherQueue();
+        std::thread([this, dq]() {
+            ng::UpdateInfo info = ng::Updater().check();
+            dq.TryEnqueue([this, info]() {
+                if (!info.error.empty()) {
+                    UpdateStatus().Text(to_hstring("Check failed: " + info.error));
+                } else if (info.available) {
+                    UpdateStatus().Text(to_hstring("Update available: " + info.latestVersion +
+                                                   "  (you have " + info.currentVersion + ")"));
+                    InstallUpdateBtn().IsEnabled(true);
+                    if (!info.notes.empty()) {
+                        UpdateNotesLink().NavigateUri(Windows::Foundation::Uri{ to_hstring(info.notes) });
+                        UpdateNotesLink().Visibility(Visibility::Visible);
+                    }
+                } else {
+                    UpdateStatus().Text(to_hstring("You are up to date (" + info.currentVersion + ")."));
+                }
+            });
+        }).detach();
+    }
+
+    void MainWindow::OnInstallUpdate(IInspectable const&, RoutedEventArgs const&)
+    {
+        InstallUpdateBtn().IsEnabled(false);
+        UpdateProgress().IsIndeterminate(true);
+        UpdateProgress().Visibility(Visibility::Visible);
+        UpdateStatus().Text(L"Preparing...");
+        auto dq = DispatcherQueue();
+        std::thread([this, dq]() {
+            ng::Updater up;
+            ng::UpdateInfo info = up.check();
+            if (info.error.empty() && info.available) {
+                auto prog = [this, dq](ng::UpdateStage, int pct, std::string const& msg) {
+                    dq.TryEnqueue([this, pct, msg]() {
+                        if (pct >= 0) { UpdateProgress().IsIndeterminate(false); UpdateProgress().Value(pct); }
+                        else UpdateProgress().IsIndeterminate(true);
+                        if (!msg.empty()) UpdateStatus().Text(to_hstring(msg));
+                    });
+                };
+                std::string path = up.download(info, prog);
+                bool launched = !path.empty() && up.apply(path, prog);
+                if (launched) {
+                    dq.TryEnqueue([this]() {
+                        UpdateStatus().Text(L"Installer launched - closing NeuralGuard to finish updating...");
+                    });
+                    // Give the user a beat to read it, then exit so our files unlock
+                    // for the silent installer (which also force-closes us as a backstop).
+                    Sleep(1500);
+                    dq.TryEnqueue([]() {
+                        if (auto app = Application::Current()) app.Exit();
+                    });
+                } else {
+                    dq.TryEnqueue([this]() {
+                        UpdateStatus().Text(L"Update failed (download or verify). Try again later.");
+                        UpdateProgress().Visibility(Visibility::Collapsed);
+                        InstallUpdateBtn().IsEnabled(true);
+                    });
+                }
+            } else {
+                dq.TryEnqueue([this]() {
+                    UpdateStatus().Text(L"Nothing to install - run Check for updates first.");
+                    UpdateProgress().Visibility(Visibility::Collapsed);
+                });
+            }
+        }).detach();
     }
 
     // Direct-DB helpers (same pattern as the rules editor: write + bump rules_gen

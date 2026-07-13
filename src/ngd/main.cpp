@@ -18,6 +18,7 @@
 #include "core/flowstats.h"
 #include "core/habit.h"
 #include "core/identity.h"
+#include "core/updater.h"
 #include "core/util.h"
 #include "ngd/enforce.h"
 #include "ngd/recorder.h"
@@ -123,6 +124,8 @@ void PrintUsage() {
         "  ngd features demote <app> <port> [proto] [db]  Distrust an (app,port) so it prompts (proto=6 TCP).\n"
         "  ngd features clear [db]       Clear ML flags (re-trust demoted apps).\n"
         "  ngd features purge [db] [days] Delete feature rows older than [days] (default 30).\n"
+        "  ngd update [check|apply]      Check GitHub for a newer release; 'apply' downloads\n"
+        "                                the installer, verifies it, and launches it.\n"
         "  ngd -h | --help | /?          Show this help.\n\n"
         "Recording requires an elevated (Administrator) prompt.\n");
 }
@@ -809,6 +812,34 @@ int RunFeatures(int argc, char** argv) {
     return ok ? 0 : 1;
 }
 
+// `ngd update [check|apply]` - self-update from the latest GitHub Release.
+// check (default) just reports; apply downloads + verifies + launches the
+// installer, then exits so the installer can replace the running files.
+int RunUpdate(int argc, char** argv) {
+    const char* sub = (argc >= 3) ? argv[2] : "check";
+    ng::Updater up;
+
+    printf("Checking for updates...\n");
+    ng::UpdateInfo info = up.check();
+    if (!info.error.empty()) { fprintf(stderr, "update check failed: %s\n", info.error.c_str()); return 1; }
+
+    printf("current: %s   latest: %s\n", info.currentVersion.c_str(), info.latestVersion.c_str());
+    if (!info.available) { printf("You are up to date.\n"); return 0; }
+    printf("Update available: %s\n  %s\n", info.latestVersion.c_str(), info.notes.c_str());
+
+    if (strcmp(sub, "check") == 0) { printf("Run 'ngd update apply' to install.\n"); return 0; }
+    if (strcmp(sub, "apply") != 0) { fprintf(stderr, "usage: ngd update [check|apply]\n"); return 2; }
+
+    auto prog = [](ng::UpdateStage, int pct, const std::string& msg) {
+        if (!msg.empty()) printf("  %s%s\n", msg.c_str(), pct >= 0 ? "" : "");
+    };
+    std::string path = up.download(info, prog);
+    if (path.empty()) { fprintf(stderr, "download/verify failed.\n"); return 1; }
+    if (!up.apply(path, prog)) { fprintf(stderr, "failed to launch installer.\n"); return 1; }
+    printf("Installer launched. NeuralGuard will now exit so it can update.\n");
+    return 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -835,6 +866,9 @@ int main(int argc, char** argv) {
     // `features` has sub-subcommands (dump/purge), so handle it before the flat
     // mode parser below treats argv[2] as a db path.
     if (argc >= 2 && strcmp(argv[1], "features") == 0) return RunFeatures(argc, argv);
+
+    // `update` needs no db and no admin (the installer elevates its own steps).
+    if (argc >= 2 && strcmp(argv[1], "update") == 0) return RunUpdate(argc, argv);
 
     // `baseline` prints the stable permits enforce would install (read-only, no
     // admin) - shows the effect of Phase 4d ML demotions without enforcing.
