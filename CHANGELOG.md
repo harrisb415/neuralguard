@@ -5,6 +5,29 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.1] - 2026-07-12
+
+### Changed
+
+- **Dashboard dark-neon theme** — the WinUI dashboard was rebuilt to match the
+  design prototype exactly: a custom integrated title bar (brand mark, mode
+  buttons, live status dot), a custom sidebar with geometric glyph icons and a
+  cyan selection bar, verdict/state **pill badges** (green allow, cyan
+  cap-allow, red block/drop, amber monitor), per-view fixed columns, carded
+  Settings, and a Mica backdrop.
+- **Flows scores are colored** — anomaly turns amber when negative and
+  P(malicious) turns red at/above 0.5.
+
+### Fixed
+
+- **Mode status was stuck on "enforcing."** `Stop` and `Panic` removed the WFP
+  filters but left the `ngd` worker running, so `meta('mode')` never cleared.
+  Both now terminate the worker and reset the mode, so the status bar is honest.
+- **Verdict pills render reliably.** Pill colors are now computed in the row
+  model and bound with `x:Bind` instead of a value converter — converters need a
+  `FrameworkElement` root to resolve, which a `Window` lacks, so the badges had
+  been coming back blank.
+
 ## [1.2.0] - 2026-07-11
 
 ### Added

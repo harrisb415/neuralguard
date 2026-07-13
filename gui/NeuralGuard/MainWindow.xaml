@@ -28,69 +28,248 @@
                     </Setter.Value>
                 </Setter>
             </Style>
+
+            <!-- Custom sidebar nav item: cyan left-bar + subtle fill on hover/select. -->
+            <Style x:Key="NavItemStyle" TargetType="ListViewItem">
+                <Setter Property="Foreground" Value="{StaticResource NG.Brush.Text.Secondary}"/>
+                <Setter Property="FontSize" Value="13.5"/>
+                <Setter Property="Margin" Value="0,1"/>
+                <Setter Property="Padding" Value="0"/>
+                <Setter Property="MinHeight" Value="0"/>
+                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="ListViewItem">
+                            <Grid x:Name="Root" Background="Transparent" CornerRadius="8" Height="42">
+                                <Rectangle x:Name="Bar" Width="3" HorizontalAlignment="Left" Margin="0,9"
+                                           RadiusX="2" RadiusY="2" Fill="{StaticResource NG.Brush.Cyan}" Opacity="0"/>
+                                <ContentPresenter x:Name="CP" Margin="14,0" VerticalContentAlignment="Center"
+                                                  Content="{TemplateBinding Content}" Foreground="{TemplateBinding Foreground}"/>
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal"/>
+                                        <VisualState x:Name="PointerOver">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource NG.Brush.CyanSubtle}"/>
+                                                <Setter Target="CP.Foreground" Value="{StaticResource NG.Brush.Text.Primary}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="Selected">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource NG.Brush.CyanSubtle}"/>
+                                                <Setter Target="Bar.Opacity" Value="1"/>
+                                                <Setter Target="CP.Foreground" Value="{StaticResource NG.Brush.Text.Primary}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="PointerOverSelected">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource NG.Brush.CyanSubtle}"/>
+                                                <Setter Target="Bar.Opacity" Value="1"/>
+                                                <Setter Target="CP.Foreground" Value="{StaticResource NG.Brush.Text.Primary}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                        <VisualState x:Name="PressedSelected">
+                                            <VisualState.Setters>
+                                                <Setter Target="Root.Background" Value="{StaticResource NG.Brush.CyanSubtle}"/>
+                                                <Setter Target="Bar.Opacity" Value="1"/>
+                                                <Setter Target="CP.Foreground" Value="{StaticResource NG.Brush.Text.Primary}"/>
+                                            </VisualState.Setters>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                            </Grid>
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
         </Grid.Resources>
 
-        <!-- Command bar -->
-        <Grid Grid.Row="0" Padding="16,12" ColumnSpacing="8"
-              ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
-            <TextBlock Grid.Column="0" Text="NeuralGuard" FontSize="20" FontWeight="SemiBold"
-                       VerticalAlignment="Center" Margin="0,0,16,0"/>
-            <Button Grid.Column="1" Content="Enforce" Click="OnEnforce" Style="{StaticResource NG.Button.Primary}"/>
-            <Button Grid.Column="2" Content="Learn" Click="OnLearn" Style="{StaticResource NG.Button.Ghost}"/>
-            <Button Grid.Column="3" Content="Stop" Click="OnStop" Style="{StaticResource NG.Button.Ghost}"/>
-            <Button Grid.Column="4" Content="Panic" Click="OnPanic" HorizontalAlignment="Left" Style="{StaticResource NG.Button.Danger}"/>
-            <muxc:InfoBadge Grid.Column="5" x:Name="ModeBadge" Style="{StaticResource InformationalDotInfoBadgeStyle}"
-                            VerticalAlignment="Center" Margin="0,0,6,0"/>
-            <TextBlock Grid.Column="6" x:Name="ModeText" Text="idle" VerticalAlignment="Center"
-                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-        </Grid>
+        <!-- Integrated title bar (extends into the window caption; see MainWindow ctor) -->
+        <Border Grid.Row="0" x:Name="TitleBar" Height="52"
+                Background="{StaticResource NG.Brush.BG.Surface}"
+                BorderBrush="{StaticResource NG.Brush.Border.Subtle}" BorderThickness="0,0,0,1">
+            <Grid>
+                <Border x:Name="DragRegion" Background="Transparent"/>
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="22" Margin="18,0,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="9" VerticalAlignment="Center">
+                        <Border Width="22" Height="22" CornerRadius="6">
+                            <Border.Background>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                    <GradientStop Color="#00E5FF" Offset="0"/>
+                                    <GradientStop Color="#0066FF" Offset="0.5"/>
+                                    <GradientStop Color="#00E5FF" Offset="1"/>
+                                </LinearGradientBrush>
+                            </Border.Background>
+                            <TextBlock Text="&#x1F6E1;&#xFE0F;" FontFamily="Segoe UI Emoji" FontSize="11"
+                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <TextBlock Text="NeuralGuard" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center"
+                                   Foreground="{StaticResource NG.Brush.Text.Primary}"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="9">
+                        <Button Content="Enforce" Click="OnEnforce" Style="{StaticResource NG.Button.Primary}"/>
+                        <Button Content="Learn" Click="OnLearn" Style="{StaticResource NG.Button.Ghost}"/>
+                        <Button Content="Stop" Click="OnStop" Style="{StaticResource NG.Button.Ghost}"/>
+                        <Button Content="Panic" Click="OnPanic" Style="{StaticResource NG.Button.Danger}"/>
+                    </StackPanel>
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right"
+                            VerticalAlignment="Center" Margin="0,0,150,0">
+                    <Grid Width="14" Height="14" VerticalAlignment="Center">
+                        <Ellipse Width="14" Height="14" Fill="{StaticResource NG.Brush.Cyan}" Opacity="0.28"/>
+                        <Ellipse x:Name="ModeDot" Width="8" Height="8" Fill="{StaticResource NG.Brush.Cyan}"/>
+                    </Grid>
+                    <TextBlock x:Name="ModeText" Text="idle" FontSize="13" VerticalAlignment="Center"
+                               Foreground="{StaticResource NG.Brush.Text.Secondary}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
 
-        <!-- Navigation + content -->
-        <muxc:NavigationView Grid.Row="1" x:Name="Nav"
-                             PaneDisplayMode="Left" OpenPaneLength="180"
-                             IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
-                             SelectionChanged="OnNavChanged">
-            <muxc:NavigationView.MenuItems>
-                <muxc:NavigationViewItem Content="Live"    Tag="live" IsSelected="True">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE9D9;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Rules"   Tag="rules">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE71C;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Habits"  Tag="habits">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE9F5;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Per-app" Tag="apps">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE71D;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="History" Tag="history">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE81C;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Flows" Tag="flows">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE9D9;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Flags" Tag="flags">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE7BA;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Baseline" Tag="baseline">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE72E;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Feedback" Tag="feedback">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE939;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-                <muxc:NavigationViewItem Content="Digest" Tag="digest">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE7C3;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-            </muxc:NavigationView.MenuItems>
-            <muxc:NavigationView.FooterMenuItems>
-                <muxc:NavigationViewItem Content="Settings" Tag="settings">
-                    <muxc:NavigationViewItem.Icon><muxc:FontIcon Glyph="&#xE713;"/></muxc:NavigationViewItem.Icon>
-                </muxc:NavigationViewItem>
-            </muxc:NavigationView.FooterMenuItems>
+        <!-- Custom sidebar + content -->
+        <Grid Grid.Row="1" ColumnDefinitions="210,*">
+            <Border Grid.Column="0" Background="{StaticResource NG.Brush.BG.Surface}"
+                    BorderBrush="{StaticResource NG.Brush.Border.Subtle}" BorderThickness="0,0,1,0">
+                <Grid RowDefinitions="*,Auto">
+                    <ListView Grid.Row="0" x:Name="NavList" SelectionMode="Single" Padding="10,12,10,0"
+                              Background="Transparent" SelectionChanged="OnNavSelect"
+                              ItemContainerStyle="{StaticResource NavItemStyle}">
+                        <ListViewItem Tag="live"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25C9;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Live" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="rules"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25A4;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Rules" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="habits"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25C8;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Habits" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="apps"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25A6;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Per-app" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="history"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25F7;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="History" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="flows"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x224B;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Flows" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="flags"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x2691;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Flags" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="baseline"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25A4;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Baseline" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="feedback"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x270E;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Feedback" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                        <ListViewItem Tag="digest"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x25A4;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Digest" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                    </ListView>
+                    <ListView Grid.Row="1" x:Name="NavFooter" SelectionMode="Single" Padding="10,0,10,12"
+                              Background="Transparent" SelectionChanged="OnNavSelect"
+                              ItemContainerStyle="{StaticResource NavItemStyle}">
+                        <ListViewItem Tag="settings"><StackPanel Orientation="Horizontal" Spacing="12"><TextBlock Text="&#x2699;" FontFamily="Segoe UI Symbol" FontSize="15" Width="18" TextAlignment="Center" Opacity="0.85" VerticalAlignment="Center"/><TextBlock Text="Settings" VerticalAlignment="Center"/></StackPanel></ListViewItem>
+                    </ListView>
+                </Grid>
+            </Border>
 
-            <Grid x:Name="ContentRoot" Padding="24,16" RowDefinitions="Auto,Auto,*" RowSpacing="8">
+            <Grid x:Name="ContentRoot" Grid.Column="1" Padding="26,20" RowDefinitions="Auto,*" RowSpacing="14">
+                <Grid.Resources>
+                    <!-- Per-view row templates. All share the same 5-column Grid so the
+                         resizable/sortable header (OnContainerChanging) keeps working; they
+                         differ only in which cells render as neon pill badges. ShowView
+                         assigns DataList.ItemTemplate by the current view. Pills use classic
+                         {Binding} for the converter (x:Bind converters need a FrameworkElement
+                         root, which a Window has none of). -->
+                    <DataTemplate x:Key="TplGeneric" x:DataType="local:Row">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/><ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <Border Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="6" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
+                                    Background="{x:Bind C0Bg}" BorderBrush="{x:Bind C0Bd}">
+                                <TextBlock Text="{x:Bind C0}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
+                                           Foreground="{x:Bind C0Fg}"/></Border>
+                            <TextBlock Grid.Column="1" Text="{x:Bind C1}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="2" Text="{x:Bind C2}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </DataTemplate>
+                    <!-- Live / History / Flags: verdict-or-kind pill in column 1 -->
+                    <DataTemplate x:Key="TplLive" x:DataType="local:Row">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/><ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="6" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
+                                    Background="{x:Bind C1Bg}" BorderBrush="{x:Bind C1Bd}">
+                                <TextBlock Text="{x:Bind C1}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
+                                           Foreground="{x:Bind C1Fg}"/></Border>
+                            <TextBlock Grid.Column="2" Text="{x:Bind C2}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </DataTemplate>
+                    <!-- Baseline: state pill in column 2 -->
+                    <DataTemplate x:Key="TplBaseline" x:DataType="local:Row">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/><ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="{x:Bind C1}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <Border Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="6" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
+                                    Background="{x:Bind C2Bg}" BorderBrush="{x:Bind C2Bd}">
+                                <TextBlock Text="{x:Bind C2}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
+                                           Foreground="{x:Bind C2Fg}"/></Border>
+                            <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </DataTemplate>
+                    <!-- Feedback: decision pill (col1) + label pill (col2) -->
+                    <DataTemplate x:Key="TplFeedback" x:DataType="local:Row">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/><ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="6" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
+                                    Background="{x:Bind C1Bg}" BorderBrush="{x:Bind C1Bd}">
+                                <TextBlock Text="{x:Bind C1}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
+                                           Foreground="{x:Bind C1Fg}"/></Border>
+                            <Border Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="6" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
+                                    Background="{x:Bind C2Bg}" BorderBrush="{x:Bind C2Bd}">
+                                <TextBlock Text="{x:Bind C2}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
+                                           Foreground="{x:Bind C2Fg}"/></Border>
+                            <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </DataTemplate>
+                    <!-- Per-app: Blocked count (col1) red when > 0 -->
+                    <DataTemplate x:Key="TplPerApp" x:DataType="local:Row">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/><ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="{x:Bind C1}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0" FontWeight="SemiBold"
+                                       Foreground="{x:Bind C1BlockedFg}"/>
+                            <TextBlock Grid.Column="2" Text="{x:Bind C2}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextTrimming="CharacterEllipsis"/>
+                        </Grid>
+                    </DataTemplate>
+                    <!-- Flows: anomaly (col3) amber when < 0, P(malicious) (col4) red when >= .5; both right-aligned -->
+                    <DataTemplate x:Key="TplFlows" x:DataType="local:Row">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="110"/><ColumnDefinition Width="110"/>
+                                <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
+                                <ColumnDefinition Width="90"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="1" Text="{x:Bind C1}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="2" Text="{x:Bind C2}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                            <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextAlignment="Right" Margin="0,0,22,0"
+                                       Foreground="{x:Bind C3AnomFg}"/>
+                            <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextAlignment="Right" Margin="0,0,4,0"
+                                       Foreground="{x:Bind C4MalFg}"/>
+                        </Grid>
+                    </DataTemplate>
+                </Grid.Resources>
                 <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto">
-                    <TextBlock Grid.Column="0" x:Name="ViewTitle" Text="Live" FontSize="24" FontWeight="SemiBold"
+                    <TextBlock Grid.Column="0" x:Name="ViewTitle" Text="Live" FontSize="26" FontWeight="SemiBold"
                                VerticalAlignment="Center"/>
                     <StackPanel Grid.Column="1" x:Name="RulesTools" Orientation="Horizontal" Spacing="8"
                                 VerticalAlignment="Center" Margin="0,0,12,0" Visibility="Collapsed">
@@ -109,159 +288,132 @@
                                     PlaceholderText="Filter" QueryIcon="Find" TextChanged="OnSearchChanged"/>
                 </Grid>
 
-                <!-- Resizable + sortable column headers. Each header cell is a full-width
-                     transparent Border (tap anywhere to sort); a visible grip on the right
-                     edge drags to resize. -->
-                <Border Grid.Row="1" x:Name="HeaderCard" Background="{ThemeResource CardBackgroundFillColorDefaultBrush}"
-                        CornerRadius="4" Padding="12,0,0,0">
-                    <Grid x:Name="HeaderRow" Height="34">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition x:Name="HCol0" Width="110"/>
-                            <ColumnDefinition x:Name="HCol1" Width="110"/>
-                            <ColumnDefinition x:Name="HCol2" Width="240"/>
-                            <ColumnDefinition x:Name="HCol3" Width="320"/>
-                            <ColumnDefinition x:Name="HCol4" Width="90"/>
-                        </Grid.ColumnDefinitions>
-                        <Grid Grid.Column="0" ColumnDefinitions="*,Auto">
+                <!-- Table: sticky header + rows in one rounded card. Columns are fixed
+                     per view (widths set in ShowView, synced to rows by OnContainerChanging);
+                     tap a header to sort. -->
+                <Border Grid.Row="1" x:Name="TableCard"
+                        Background="{StaticResource NG.Brush.BG.Surface}"
+                        BorderBrush="{StaticResource NG.Brush.Border.Subtle}"
+                        BorderThickness="1" CornerRadius="12">
+                    <Grid RowDefinitions="Auto,*">
+                        <Grid Grid.Row="0" x:Name="HeaderRow" Height="46" Padding="20,0"
+                              BorderBrush="{StaticResource NG.Brush.Border.Subtle}" BorderThickness="0,0,0,1">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition x:Name="HCol0" Width="140"/>
+                                <ColumnDefinition x:Name="HCol1" Width="130"/>
+                                <ColumnDefinition x:Name="HCol2" Width="*"/>
+                                <ColumnDefinition x:Name="HCol3" Width="200"/>
+                                <ColumnDefinition x:Name="HCol4" Width="84"/>
+                            </Grid.ColumnDefinitions>
                             <Border Grid.Column="0" Background="Transparent" Tag="0" Tapped="OnHeaderTap">
-                                <TextBlock x:Name="H0" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Border>
-                            <local:ColumnGrip Grid.Column="1" Tag="0" Style="{StaticResource GripStyle}"
-                                              PointerPressed="OnGripPressed" PointerMoved="OnGripMoved"
-                                              PointerReleased="OnGripReleased" PointerCanceled="OnGripReleased"
-                                              PointerCaptureLost="OnGripReleased"/>
+                                <TextBlock x:Name="H0" VerticalAlignment="Center" Style="{StaticResource NG.Text.SectionHeader}"/></Border>
+                            <Border Grid.Column="1" Background="Transparent" Tag="1" Tapped="OnHeaderTap">
+                                <TextBlock x:Name="H1" VerticalAlignment="Center" Style="{StaticResource NG.Text.SectionHeader}"/></Border>
+                            <Border Grid.Column="2" Background="Transparent" Tag="2" Tapped="OnHeaderTap">
+                                <TextBlock x:Name="H2" VerticalAlignment="Center" Style="{StaticResource NG.Text.SectionHeader}"/></Border>
+                            <Border Grid.Column="3" Background="Transparent" Tag="3" Tapped="OnHeaderTap">
+                                <TextBlock x:Name="H3" VerticalAlignment="Center" Style="{StaticResource NG.Text.SectionHeader}"/></Border>
+                            <Border Grid.Column="4" Background="Transparent" Tag="4" Tapped="OnHeaderTap">
+                                <TextBlock x:Name="H4" VerticalAlignment="Center" Style="{StaticResource NG.Text.SectionHeader}"/></Border>
                         </Grid>
-                        <Grid Grid.Column="1" ColumnDefinitions="*,Auto">
-                            <Border Grid.Column="0" Background="Transparent" Tag="1" Tapped="OnHeaderTap">
-                                <TextBlock x:Name="H1" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Border>
-                            <local:ColumnGrip Grid.Column="1" Tag="1" Style="{StaticResource GripStyle}"
-                                              PointerPressed="OnGripPressed" PointerMoved="OnGripMoved"
-                                              PointerReleased="OnGripReleased" PointerCanceled="OnGripReleased"
-                                              PointerCaptureLost="OnGripReleased"/>
-                        </Grid>
-                        <Grid Grid.Column="2" ColumnDefinitions="*,Auto">
-                            <Border Grid.Column="0" Background="Transparent" Tag="2" Tapped="OnHeaderTap">
-                                <TextBlock x:Name="H2" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Border>
-                            <local:ColumnGrip Grid.Column="1" Tag="2" Style="{StaticResource GripStyle}"
-                                              PointerPressed="OnGripPressed" PointerMoved="OnGripMoved"
-                                              PointerReleased="OnGripReleased" PointerCanceled="OnGripReleased"
-                                              PointerCaptureLost="OnGripReleased"/>
-                        </Grid>
-                        <Grid Grid.Column="3" ColumnDefinitions="*,Auto">
-                            <Border Grid.Column="0" Background="Transparent" Tag="3" Tapped="OnHeaderTap">
-                                <TextBlock x:Name="H3" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                            </Border>
-                            <local:ColumnGrip Grid.Column="1" Tag="3" Style="{StaticResource GripStyle}"
-                                              PointerPressed="OnGripPressed" PointerMoved="OnGripMoved"
-                                              PointerReleased="OnGripReleased" PointerCanceled="OnGripReleased"
-                                              PointerCaptureLost="OnGripReleased"/>
-                        </Grid>
-                        <Border Grid.Column="4" Background="Transparent" Tag="4" Tapped="OnHeaderTap">
-                            <TextBlock x:Name="H4" VerticalAlignment="Center" FontWeight="SemiBold" FontSize="12"
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}"/>
-                        </Border>
+                        <ListView Grid.Row="1" x:Name="DataList" SelectionMode="Single" Padding="0"
+                                  IsRightTapEnabled="True" RightTapped="OnRowRightTapped"
+                                  ContainerContentChanging="OnContainerChanging"
+                                  ItemTemplate="{StaticResource TplGeneric}"
+                                  Background="Transparent"
+                                  ItemContainerTransitions="{x:Null}">
+                            <ListView.ItemContainerStyle>
+                                <Style TargetType="ListViewItem">
+                                    <Setter Property="Padding" Value="20,11"/>
+                                    <Setter Property="MinHeight" Value="0"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                </Style>
+                            </ListView.ItemContainerStyle>
+                        </ListView>
                     </Grid>
                 </Border>
 
-                <ListView Grid.Row="2" x:Name="DataList" SelectionMode="Single"
-                          IsRightTapEnabled="True" RightTapped="OnRowRightTapped"
-                          ContainerContentChanging="OnContainerChanging"
-                          ItemContainerTransitions="{x:Null}">
-                    <ListView.ItemContainerStyle>
-                        <Style TargetType="ListViewItem">
-                            <Setter Property="Padding" Value="12,3"/>
-                            <Setter Property="MinHeight" Value="0"/>
-                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                        </Style>
-                    </ListView.ItemContainerStyle>
-                    <ListView.ItemTemplate>
-                        <DataTemplate x:DataType="local:Row">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="110"/>
-                                    <ColumnDefinition Width="110"/>
-                                    <ColumnDefinition Width="240"/>
-                                    <ColumnDefinition Width="320"/>
-                                    <ColumnDefinition Width="90"/>
-                                </Grid.ColumnDefinitions>
-                                <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"
-                                           Foreground="{Binding C0, Converter={StaticResource SemBrush}}"/>
-                                <TextBlock Grid.Column="1" Text="{x:Bind C1}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"
-                                           Foreground="{Binding C1, Converter={StaticResource SemBrush}}"/>
-                                <TextBlock Grid.Column="2" Text="{x:Bind C2}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"
-                                           Foreground="{Binding C2, Converter={StaticResource SemBrush}}"/>
-                                <TextBlock Grid.Column="3" Text="{x:Bind C3}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                                <TextBlock Grid.Column="4" Text="{x:Bind C4}" TextTrimming="CharacterEllipsis"/>
-                            </Grid>
-                        </DataTemplate>
-                    </ListView.ItemTemplate>
-                </ListView>
-
                 <!-- Digest view: a plain-text weekly summary (Phase 4f). -->
-                <ScrollViewer Grid.Row="2" x:Name="DigestPanel" Visibility="Collapsed"
+                <ScrollViewer Grid.Row="1" x:Name="DigestPanel" Visibility="Collapsed"
                               VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto">
                     <TextBlock x:Name="DigestText" FontFamily="Consolas" FontSize="13"
                                IsTextSelectionEnabled="True" TextWrapping="NoWrap" Margin="4,8"/>
                 </ScrollViewer>
 
-                <!-- Settings form (shown instead of the data table for the Settings view). -->
-                <ScrollViewer Grid.Row="2" x:Name="SettingsPanel" Visibility="Collapsed"
+                <!-- Settings (cards; shown instead of the data table for the Settings view). -->
+                <ScrollViewer Grid.Row="1" x:Name="SettingsPanel" Visibility="Collapsed"
                               VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="24" MaxWidth="620" HorizontalAlignment="Left" Margin="0,4,0,0">
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="Autonomy" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="What NeuralGuard does when an app makes a new outbound connection while enforcing."
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                            <RadioButton x:Name="Auto0" Tag="0" GroupName="autonomy" Checked="OnAutonomyChanged"
-                                         Content="Prompt me on every new connection"/>
-                            <RadioButton x:Name="Auto1" Tag="1" GroupName="autonomy" Checked="OnAutonomyChanged"
-                                         Content="Auto-allow apps I already use, prompt for the rest"/>
-                            <RadioButton x:Name="Auto2" Tag="2" GroupName="autonomy" Checked="OnAutonomyChanged"
-                                         Content="Auto-allow everything (log only, no prompts)"/>
-                        </StackPanel>
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="Background service" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="Run enforcement as a Windows service (LocalSystem, auto-start) so it keeps guarding after you log off or reboot."
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                            <TextBlock x:Name="SvcStatus" Text="Checking..." FontWeight="SemiBold"/>
-                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0">
-                                <Button Content="Install service" Click="OnServiceInstall" Style="{StaticResource AccentButtonStyle}"/>
-                                <Button Content="Remove service" Click="OnServiceRemove"/>
+                    <StackPanel MaxWidth="920" HorizontalAlignment="Left" Margin="0,2,0,30">
+                        <TextBlock Text="AUTONOMY" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,2,0,10"/>
+                        <Border Style="{StaticResource NG.Card}">
+                            <StackPanel>
+                                <TextBlock Text="What NeuralGuard does when an app makes a new outbound connection while enforcing."
+                                           Style="{StaticResource NG.Text.Secondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <RadioButton x:Name="Auto0" Tag="0" GroupName="autonomy" Checked="OnAutonomyChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Prompt me on every new connection"/>
+                                <RadioButton x:Name="Auto1" Tag="1" GroupName="autonomy" Checked="OnAutonomyChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Auto-allow apps I already use, prompt for the rest"/>
+                                <RadioButton x:Name="Auto2" Tag="2" GroupName="autonomy" Checked="OnAutonomyChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Auto-allow everything (log only, no prompts)"/>
                             </StackPanel>
-                        </StackPanel>
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="Machine learning" FontSize="18" FontWeight="SemiBold"/>
-                            <TextBlock Text="Learn a baseline from your completed connections and score new ones for anomalies. Scoring is advisory in Shadow mode - it is logged (see the Flows view) and never blocks anything."
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
-                            <ToggleSwitch x:Name="FeatureToggle" Header="Collect flow features"
-                                          OnContent="On" OffContent="Off" Toggled="OnFeatureToggle"/>
-                            <TextBlock Text="Scoring mode" Margin="0,8,0,0" FontWeight="SemiBold"/>
-                            <RadioButton x:Name="Ml0" Tag="off" GroupName="mlmode" Checked="OnMlModeChanged"
-                                         Content="Off - don't score"/>
-                            <RadioButton x:Name="Ml1" Tag="shadow" GroupName="mlmode" Checked="OnMlModeChanged"
-                                         Content="Shadow - score and log only, no effect on rules"/>
-                            <RadioButton x:Name="Ml2" Tag="active" GroupName="mlmode" Checked="OnMlModeChanged"
-                                         Content="Active - a strongly-malicious score can demote a trusted app so it prompts again"/>
-                            <TextBlock Text="Active never auto-blocks: a demoted app simply loses its automatic pass and asks you the next time it connects, exactly like a brand-new app. Only enable this once the models are trained on your own traffic - the shipped models are placeholders. Demotions show under the Flags view."
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" FontSize="12" Margin="24,2,0,0"/>
-                            <TextBlock Text="Confidence gates (active mode)" Margin="0,10,0,0" FontWeight="SemiBold"/>
-                            <TextBlock Text="How strong a score must be before Active mode acts. Higher malicious / lower (more negative) anomaly = fewer, higher-confidence flags."
-                                       Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" FontSize="12"/>
-                            <StackPanel Orientation="Horizontal" Spacing="20" Margin="0,4,0,0">
-                                <muxc:NumberBox x:Name="MalThresh" Header="Demote at P(malicious) &#x2265;" Width="220"
-                                                Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1"
-                                                SpinButtonPlacementMode="Compact" ValueChanged="OnMlThresholdChanged"/>
-                                <muxc:NumberBox x:Name="AnomThresh" Header="Review at anomaly &#x2264;" Width="220"
-                                                Minimum="-1" Maximum="1" SmallChange="0.05" LargeChange="0.1"
-                                                SpinButtonPlacementMode="Compact" ValueChanged="OnMlThresholdChanged"/>
+                        </Border>
+
+                        <TextBlock Text="BACKGROUND SERVICE" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,26,0,10"/>
+                        <Border Style="{StaticResource NG.Card}">
+                            <StackPanel>
+                                <TextBlock Text="Run enforcement as a Windows service (LocalSystem, auto-start) so it keeps guarding after you log off or reboot."
+                                           Style="{StaticResource NG.Text.Secondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <TextBlock x:Name="SvcStatus" Text="Checking..." FontStyle="Italic"
+                                           Foreground="{StaticResource NG.Brush.Text.Secondary}" Margin="0,0,0,16"/>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <Button Content="Install service" Click="OnServiceInstall" Style="{StaticResource NG.Button.Primary}"/>
+                                    <Button Content="Remove service" Click="OnServiceRemove" Style="{StaticResource NG.Button.Ghost}"/>
+                                </StackPanel>
                             </StackPanel>
-                        </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="MACHINE LEARNING" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,26,0,10"/>
+                        <Border Style="{StaticResource NG.Card}">
+                            <StackPanel>
+                                <TextBlock Text="Learn a baseline from your completed connections and score new ones for anomalies. Scoring is advisory in Shadow mode - it is logged (see the Flows view) and never blocks anything."
+                                           Style="{StaticResource NG.Text.Secondary}" TextWrapping="Wrap" Margin="0,0,0,16"/>
+                                <Grid>
+                                    <StackPanel HorizontalAlignment="Left" VerticalAlignment="Center">
+                                        <TextBlock Text="Collect flow features" Foreground="{StaticResource NG.Brush.Text.Primary}"/>
+                                        <TextBlock Text="Archive completed connections so the ML models can score them"
+                                                   Style="{StaticResource NG.Text.Secondary}" FontSize="12"/>
+                                    </StackPanel>
+                                    <ToggleSwitch x:Name="FeatureToggle" OnContent="On" OffContent="Off"
+                                                  Toggled="OnFeatureToggle" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </Grid>
+                                <Border Height="1" Background="{StaticResource NG.Brush.Border.Subtle}" Margin="0,18"/>
+                                <TextBlock Text="Scoring mode" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                                <RadioButton x:Name="Ml0" Tag="off" GroupName="mlmode" Checked="OnMlModeChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Off - don't score"/>
+                                <RadioButton x:Name="Ml1" Tag="shadow" GroupName="mlmode" Checked="OnMlModeChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Shadow - score and log only, no effect on rules"/>
+                                <RadioButton x:Name="Ml2" Tag="active" GroupName="mlmode" Checked="OnMlModeChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Active - a strongly-malicious score can demote a trusted app so it prompts again"/>
+                                <TextBlock Text="Active never auto-blocks: a demoted app simply loses its automatic pass and asks you the next time it connects, exactly like a brand-new app. Only enable this once the models are trained on your own traffic - the shipped models are placeholders. Demotions show under the Flags view."
+                                           Foreground="{StaticResource NG.Brush.Text.Muted}" TextWrapping="Wrap" FontStyle="Italic" FontSize="11.5" Margin="30,8,0,0" MaxWidth="600" HorizontalAlignment="Left"/>
+                                <StackPanel x:Name="GatesPanel" Visibility="Collapsed">
+                                    <Border Height="1" Background="{StaticResource NG.Brush.Border.Subtle}" Margin="0,18"/>
+                                    <TextBlock Text="CONFIDENCE GATES (ACTIVE MODE)" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,0,0,4"/>
+                                    <TextBlock Text="How strong a score must be before Active mode acts. Higher malicious / lower (more negative) anomaly = fewer, higher-confidence flags."
+                                               Style="{StaticResource NG.Text.Muted}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                                    <StackPanel Orientation="Horizontal" Spacing="28">
+                                        <muxc:NumberBox x:Name="MalThresh" Header="Demote at P(malicious) &#x2265;" Width="240"
+                                                        Style="{StaticResource NG.NumberBox}"
+                                                        Minimum="0" Maximum="1" SmallChange="0.05" LargeChange="0.1"
+                                                        SpinButtonPlacementMode="Compact" ValueChanged="OnMlThresholdChanged"/>
+                                        <muxc:NumberBox x:Name="AnomThresh" Header="Review at anomaly &#x2264;" Width="240"
+                                                        Style="{StaticResource NG.NumberBox}"
+                                                        Minimum="-1" Maximum="1" SmallChange="0.05" LargeChange="0.1"
+                                                        SpinButtonPlacementMode="Compact" ValueChanged="OnMlThresholdChanged"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
 
@@ -269,7 +421,7 @@
                      bottom over the list. Severity fill brushes are overridden to
                      opaque so the window's Mica/desktop doesn't show through. Single
                      element, sized to its content, so nothing is left behind on close. -->
-                <muxc:InfoBar Grid.Row="2" x:Name="Toast"
+                <muxc:InfoBar Grid.Row="1" x:Name="Toast"
                               IsOpen="False" IsClosable="True"
                               VerticalAlignment="Bottom" HorizontalAlignment="Center"
                               MaxWidth="680" Margin="0,0,0,24" FontSize="15">
@@ -293,6 +445,6 @@
                     </muxc:InfoBar.Resources>
                 </muxc:InfoBar>
             </Grid>
-        </muxc:NavigationView>
+        </Grid>
     </Grid>
 </Window>

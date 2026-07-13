@@ -2,6 +2,12 @@ namespace NeuralGuard
 {
     // A generic table row: five display columns + a hidden DB id used by
     // right-click actions (delete a rule, block a destination, ...).
+    //
+    // The pill/score brushes are computed once in the constructor from the cell
+    // strings and exposed for x:Bind. We bind brushes this way (not a value
+    // converter) because MainWindow is a Window, not a Page: x:Bind converters
+    // need a FrameworkElement root to resolve, and classic {Binding} converters
+    // are unreliable in a Window - so the color is baked into the row instead.
     runtimeclass Row
     {
         Row(Int64 id, String c0, String c1, String c2, String c3, String c4);
@@ -11,5 +17,24 @@ namespace NeuralGuard
         String C2{ get; };
         String C3{ get; };
         String C4{ get; };
+
+        // Pill brushes for the three columns that can render as verdict/state
+        // badges (transparent fill+border for non-token cells, so the pill just
+        // vanishes and the text shows plainly).
+        Microsoft.UI.Xaml.Media.Brush C0Fg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C0Bg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C0Bd{ get; };
+        Microsoft.UI.Xaml.Media.Brush C1Fg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C1Bg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C1Bd{ get; };
+        Microsoft.UI.Xaml.Media.Brush C2Fg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C2Bg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C2Bd{ get; };
+
+        // Per-app Blocked count: red when > 0, else muted.
+        Microsoft.UI.Xaml.Media.Brush C1BlockedFg{ get; };
+        // Flows scores: anomaly amber when < 0; P(malicious) red when >= 0.5.
+        Microsoft.UI.Xaml.Media.Brush C3AnomFg{ get; };
+        Microsoft.UI.Xaml.Media.Brush C4MalFg{ get; };
     }
 }

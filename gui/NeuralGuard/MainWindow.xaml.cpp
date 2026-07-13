@@ -52,6 +52,20 @@ namespace winrt::NeuralGuard::implementation
         Title(L"NeuralGuard");
         SystemBackdrop(MicaBackdrop{});
 
+        // Integrated neon title bar: draw our own bar in the caption area and make
+        // its empty space draggable. Caption buttons blend with the dark surface.
+        ExtendsContentIntoTitleBar(true);
+        SetTitleBar(DragRegion());
+        if (auto tb = AppWindow().TitleBar())
+        {
+            tb.ButtonBackgroundColor(winrt::Windows::UI::Color{ 0, 0, 0, 0 });
+            tb.ButtonInactiveBackgroundColor(winrt::Windows::UI::Color{ 0, 0, 0, 0 });
+            tb.ButtonForegroundColor(winrt::Windows::UI::Color{ 255, 232, 236, 244 });
+            tb.ButtonInactiveForegroundColor(winrt::Windows::UI::Color{ 120, 232, 236, 244 });
+            tb.ButtonHoverBackgroundColor(winrt::Windows::UI::Color{ 40, 255, 255, 255 });
+            tb.ButtonHoverForegroundColor(winrt::Windows::UI::Color{ 255, 255, 255, 255 });
+        }
+
         colW_ = Application::Current().Resources().Lookup(box_value(L"ColW")).as<NeuralGuard::ColWidths>();
 
         timer_ = DispatcherTimer{};
@@ -68,6 +82,7 @@ namespace winrt::NeuralGuard::implementation
 
         UpdateMode();
         ShowView(L"live");
+        NavList().SelectedIndex(0);   // highlight Live in the sidebar
     }
 
     winrt::Microsoft::UI::Xaml::Controls::TextBlock MainWindow::HdrBlock(int i)
@@ -104,8 +119,10 @@ namespace winrt::NeuralGuard::implementation
     {
         for (int i = 0; i < 5; ++i)
         {
-            hstring t = baseHdr_[i];
-            if (i == sortCol_ && !t.empty())
+            std::wstring u{ baseHdr_[i] };
+            for (auto& c : u) c = (wchar_t)::towupper(c);   // uppercase column labels
+            hstring t{ u };
+            if (i == sortCol_ && !u.empty())
             {
                 wchar_t arrow[2] = { (wchar_t)(sortAsc_ ? 0x25B2 : 0x25BC), 0 };
                 t = t + L"  " + hstring(arrow);
@@ -161,11 +178,23 @@ namespace winrt::NeuralGuard::implementation
             auto cols = g.ColumnDefinitions();
             if (cols.Size() >= 5)
             {
-                cols.GetAt(0).Width(colW_.W0()); cols.GetAt(1).Width(colW_.W1());
-                cols.GetAt(2).Width(colW_.W2()); cols.GetAt(3).Width(colW_.W3());
-                cols.GetAt(4).Width(colW_.W4());
+                // Keep each row's columns in lockstep with the (per-view) header.
+                cols.GetAt(0).Width(HCol0().Width()); cols.GetAt(1).Width(HCol1().Width());
+                cols.GetAt(2).Width(HCol2().Width()); cols.GetAt(3).Width(HCol3().Width());
+                cols.GetAt(4).Width(HCol4().Width());
             }
         }
+    }
+
+    // Per-view column widths for the header (rows follow via OnContainerChanging).
+    // A negative value means a star (fills remaining space) column.
+    void MainWindow::SetCols(double a, double b, double c, double d, double e)
+    {
+        auto gl = [](double v) {
+            return v < 0 ? GridLength{ 1, GridUnitType::Star } : GridLength{ v, GridUnitType::Pixel };
+        };
+        HCol0().Width(gl(a)); HCol1().Width(gl(b)); HCol2().Width(gl(c));
+        HCol3().Width(gl(d)); HCol4().Width(gl(e));
     }
 
     void MainWindow::SetHeaders(hstring const& h0, hstring const& h1, hstring const& h2,
@@ -448,8 +477,7 @@ namespace winrt::NeuralGuard::implementation
         bool settings = (tag == L"settings");
         bool digest = (tag == L"digest");
         bool table = !settings && !digest;   // the shared sortable data table
-        HeaderCard().Visibility(table ? Visibility::Visible : Visibility::Collapsed);
-        DataList().Visibility(table ? Visibility::Visible : Visibility::Collapsed);
+        TableCard().Visibility(table ? Visibility::Visible : Visibility::Collapsed);
         SettingsPanel().Visibility(settings ? Visibility::Visible : Visibility::Collapsed);
         DigestPanel().Visibility(digest ? Visibility::Visible : Visibility::Collapsed);
         SearchBox().Visibility(table ? Visibility::Visible : Visibility::Collapsed);
@@ -460,7 +488,42 @@ namespace winrt::NeuralGuard::implementation
         SearchBox().Text(L"");   // reset the filter when switching views
         if (settings) LoadSettings();
         else if (digest) BuildDigest();
-        else RefreshCurrent();
+        else
+        {
+            // Pick the row template for this view - pill badges where verdict/state/
+            // kind/label tokens live, red Blocked for Per-app, plain otherwise.
+            hstring tpl = L"TplGeneric";
+            if (tag == L"live" || tag == L"history" || tag == L"flags") tpl = L"TplLive";
+            else if (tag == L"baseline") tpl = L"TplBaseline";
+            else if (tag == L"feedback") tpl = L"TplFeedback";
+            else if (tag == L"apps") tpl = L"TplPerApp";
+            else if (tag == L"flows") tpl = L"TplFlows";
+            auto res = ContentRoot().Resources();
+            if (res.HasKey(box_value(tpl)))
+                DataList().ItemTemplate(res.Lookup(box_value(tpl)).as<winrt::Microsoft::UI::Xaml::DataTemplate>());
+
+            // Per-view column widths (the * column fills; 0 = unused 5th column).
+            // Widths mirror the prototype grid-template-columns exactly.
+            if (tag == L"live" || tag == L"history") SetCols(130, 128, -1, 210, 84);
+            else if (tag == L"flags")                SetCols(120, 120, 90, -1, 240);
+            else if (tag == L"baseline")             SetCols(80, 90, 130, -1, 80);
+            else if (tag == L"feedback")             SetCols(120, 120, 120, -1, 220);
+            else if (tag == L"apps")                 SetCols(120, 110, 100, -1, 0);
+            else if (tag == L"flows")                SetCols(120, -1, 230, 110, 110);
+            else if (tag == L"rules")                SetCols(120, 90, 120, -1, 0);
+            else if (tag == L"habits")               SetCols(110, 90, -1, 260, 0);
+            else                                     SetCols(130, 128, -1, 210, 84);
+
+            // Flows right-aligns its two numeric headers (Anomaly, P(malicious)) to
+            // sit above the right-aligned score cells; every other view is left-aligned.
+            using winrt::Microsoft::UI::Xaml::TextAlignment;
+            bool rightNums = (tag == L"flows");
+            H3().TextAlignment(rightNums ? TextAlignment::Right : TextAlignment::Left);
+            H4().TextAlignment(rightNums ? TextAlignment::Right : TextAlignment::Left);
+            H3().Margin(rightNums ? Thickness{ 0, 0, 22, 0 } : Thickness{ 0, 0, 0, 0 });
+            H4().Margin(rightNums ? Thickness{ 0, 0, 4, 0 } : Thickness{ 0, 0, 0, 0 });
+            RefreshCurrent();
+        }
     }
 
     void MainWindow::OnSearchChanged(Controls::AutoSuggestBox const& box,
@@ -585,6 +648,7 @@ namespace winrt::NeuralGuard::implementation
         Ml2().IsChecked(mode == "active");
         MalThresh().Value(std::strtod(MetaGet("ml_malicious_threshold", "0.9").c_str(), nullptr));
         AnomThresh().Value(std::strtod(MetaGet("ml_anomaly_threshold", "-0.15").c_str(), nullptr));
+        GatesPanel().Visibility(mode == "active" ? Visibility::Visible : Visibility::Collapsed);
         loadingSettings_ = false;
         RefreshServiceStatus();
     }
@@ -662,6 +726,7 @@ namespace winrt::NeuralGuard::implementation
         auto fe = sender.try_as<FrameworkElement>();
         std::string mode = fe ? to_string(unbox_value_or<hstring>(fe.Tag(), L"shadow")) : "shadow";
         MetaSet("ml_mode", mode.c_str());
+        GatesPanel().Visibility(mode == "active" ? Visibility::Visible : Visibility::Collapsed);
         if (mode == "active")
             Notify(L"Active scoring on. A strongly-malicious score can now demote a trusted app so it "
                    L"prompts again (it never auto-blocks). Takes effect next time enforcement runs. "
@@ -914,10 +979,18 @@ namespace winrt::NeuralGuard::implementation
         else if (curView_ == L"settings") RefreshServiceStatus();   // reflect install/remove
     }
 
-    void MainWindow::OnNavChanged(NavigationView const&, NavigationViewSelectionChangedEventArgs const& e)
+    void MainWindow::OnNavSelect(IInspectable const& sender, SelectionChangedEventArgs const&)
     {
-        if (auto item = e.SelectedItem().try_as<NavigationViewItem>())
-            ShowView(unbox_value_or<hstring>(item.Tag(), L"live"));
+        if (navSyncing_) return;
+        auto lv = sender.try_as<ListView>();
+        if (!lv) return;
+        auto item = lv.SelectedItem().try_as<ListViewItem>();
+        if (!item) return;   // deselected (from clearing the other list) - ignore
+        // Single-select across both sidebar lists: clear the other one.
+        navSyncing_ = true;
+        (lv == NavList() ? NavFooter() : NavList()).SelectedItem(nullptr);
+        navSyncing_ = false;
+        ShowView(unbox_value_or<hstring>(item.Tag(), L"live"));
     }
 
     void MainWindow::OnRowRightTapped(IInspectable const&, RightTappedRoutedEventArgs const& e)
@@ -1057,12 +1130,39 @@ namespace winrt::NeuralGuard::implementation
     }
     void MainWindow::OnStop(IInspectable const&, RoutedEventArgs const&)
     {
+        StopDaemons();
         if (RunTool(L"ngctl.exe", L"panic"))
             Notify(L"Stopped; filters removed (failing open).", InfoBarSeverity::Informational);
     }
     void MainWindow::OnPanic(IInspectable const&, RoutedEventArgs const&)
     {
+        StopDaemons();
         if (RunTool(L"ngctl.exe", L"panic"))
             Notify(L"PANIC - all NeuralGuard filters removed.", InfoBarSeverity::Warning);
+    }
+
+    // panic() only pulls the WFP filters; the ngd worker keeps running and would
+    // keep meta('mode') pinned at 'enforcing'/'learning', so the status bar lied.
+    // Terminate the worker(s) and reset the mode to idle so Stop/Panic are honest.
+    void MainWindow::StopDaemons()
+    {
+        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if (snap != INVALID_HANDLE_VALUE)
+        {
+            PROCESSENTRY32W pe{}; pe.dwSize = sizeof(pe);
+            if (Process32FirstW(snap, &pe))
+            {
+                do {
+                    if (_wcsicmp(pe.szExeFile, L"ngd.exe") == 0)
+                    {
+                        HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                        if (h) { TerminateProcess(h, 0); CloseHandle(h); }
+                    }
+                } while (Process32NextW(snap, &pe));
+            }
+            CloseHandle(snap);
+        }
+        MetaSet("mode", "idle");
+        UpdateMode();
     }
 }

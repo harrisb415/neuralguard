@@ -1,5 +1,6 @@
 #pragma once
 #include <windows.h>
+#include <tlhelp32.h>   // CreateToolhelp32Snapshot (Stop terminates ngd workers)
 #include <shellapi.h>   // ShellExecuteExW (elevated tool launch)
 #include <commdlg.h>    // GetOpenFileNameW / GetSaveFileNameW (rules export/import)
 #pragma comment(lib, "Shell32.lib")
@@ -29,11 +30,12 @@
 #include <winrt/Microsoft.UI.Xaml.Input.h>
 #include <winrt/Microsoft.UI.Input.h>
 #include <winrt/Microsoft.UI.Dispatching.h>
+#include <winrt/Microsoft.UI.Windowing.h>
+#include <winrt/Windows.UI.h>
 #include <wil/cppwinrt_helpers.h>
 
 #include <string>
 #include <vector>
 
-// XAML-activated local type (used as {StaticResource SemBrush}); XamlTypeInfo
-// needs the full implementation type, same as ColumnGrip.
+// XAML-activated local types; XamlTypeInfo needs the full implementation types.
 #include "SemBrush.h"

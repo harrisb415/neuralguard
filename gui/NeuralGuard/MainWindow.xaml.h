@@ -13,8 +13,8 @@ namespace winrt::NeuralGuard::implementation
         void OnLearn(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnStop(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnPanic(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
-        void OnNavChanged(winrt::Microsoft::UI::Xaml::Controls::NavigationView const&,
-                          winrt::Microsoft::UI::Xaml::Controls::NavigationViewSelectionChangedEventArgs const&);
+        void OnNavSelect(winrt::Windows::Foundation::IInspectable const&,
+                         winrt::Microsoft::UI::Xaml::Controls::SelectionChangedEventArgs const&);
         void OnRowRightTapped(winrt::Windows::Foundation::IInspectable const&,
                               winrt::Microsoft::UI::Xaml::Input::RightTappedRoutedEventArgs const&);
         void OnHeaderTap(winrt::Windows::Foundation::IInspectable const&,
@@ -57,6 +57,7 @@ namespace winrt::NeuralGuard::implementation
         void AddRuleFromEvent(int64_t eventId, bool block, bool useApp, int ttlSeconds);
         void DelRule(int64_t ruleId);
         void ApplyHeaderText();
+        void SetCols(double a, double b, double c, double d, double e);  // per-view column widths (negative = star)
         winrt::Microsoft::UI::Xaml::Controls::TextBlock HdrBlock(int i);
         double GetW(int i);
         void SetW(int i, double px);
@@ -66,6 +67,7 @@ namespace winrt::NeuralGuard::implementation
         void SetHeaders(winrt::hstring const& h0, winrt::hstring const& h1, winrt::hstring const& h2,
                         winrt::hstring const& h3, winrt::hstring const& h4);
         void UpdateMode();
+        void StopDaemons();   // terminate ngd workers + reset meta('mode') so the status bar is honest
         bool RunTool(std::wstring const& exe, std::wstring const& args);
         void Log(winrt::hstring const& line);
         void Notify(winrt::hstring const& message,
@@ -84,6 +86,7 @@ namespace winrt::NeuralGuard::implementation
         int  resizeCol_{ -1 };                        // column being drag-resized, -1 = none
         double dragStartX_{ 0 }, dragStartW_{ 0 };    // drag origin (relative to ContentRoot)
         bool loadingSettings_{ false };               // suppress the autonomy handler while syncing radios
+        bool navSyncing_{ false };                    // guard while clearing the other sidebar list's selection
         bool menuOpen_{ false };                      // a row context menu is open - pause the live refresh
         winrt::hstring filter_;                       // case-insensitive filter for the current table
     };
