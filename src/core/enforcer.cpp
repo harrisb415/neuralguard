@@ -5,6 +5,7 @@
 #include <fwpmu.h>
 
 #include <cstdio>
+#include <cstring>
 
 namespace ng {
 namespace {
@@ -189,6 +190,27 @@ bool Enforcer::addV4(bool block, void* condsV, unsigned nc, unsigned char weight
     return true;
 }
 
+bool Enforcer::addV6(bool block, void* condsV, unsigned nc, unsigned char weight,
+                     const wchar_t* name) {
+    FWPM_FILTER0 filter{};
+    filter.layerKey = FWPM_LAYER_ALE_AUTH_CONNECT_V6;
+    filter.subLayerKey = kSubLayerGuid;
+    filter.providerKey = const_cast<GUID*>(&kProviderGuid);
+    filter.displayData.name = const_cast<wchar_t*>(name);
+    filter.action.type = block ? FWP_ACTION_BLOCK : FWP_ACTION_PERMIT;
+    filter.weight.type = FWP_UINT8;
+    filter.weight.uint8 = weight;
+    filter.numFilterConditions = nc;
+    filter.filterCondition = static_cast<FWPM_FILTER_CONDITION0*>(condsV);
+    UINT64 id = 0;
+    DWORD e = FwpmFilterAdd0((HANDLE)engine_, &filter, nullptr, &id);
+    if (e != ERROR_SUCCESS) {
+        fprintf(stderr, "FwpmFilterAdd0 v6(%ls) failed: 0x%08lX\n", name, e);
+        return false;
+    }
+    return true;
+}
+
 bool Enforcer::addPermitCidrV4(uint32_t addrHost, uint32_t maskHost) {
     FWP_V4_ADDR_AND_MASK am{}; am.addr = addrHost; am.mask = maskHost;
     FWPM_FILTER_CONDITION0 c{};
@@ -210,6 +232,33 @@ bool Enforcer::addPermitRemotePortV4(uint16_t port, uint8_t proto) {
     c[1].conditionValue.type = FWP_UINT16;
     c[1].conditionValue.uint16 = port;
     return addV4(false, c, 2, 15, L"NeuralGuard exempt (port)");
+}
+
+bool Enforcer::addPermitCidrV6(const unsigned char addr[16], unsigned char prefixLen) {
+    FWP_V6_ADDR_AND_MASK am{};
+    memcpy(am.addr, addr, 16);
+    am.prefixLength = prefixLen;
+    FWPM_FILTER_CONDITION0 c{};
+    c.fieldKey = FWPM_CONDITION_IP_REMOTE_ADDRESS;
+    c.matchType = FWP_MATCH_EQUAL;
+    c.conditionValue.type = FWP_V6_ADDR_MASK;
+    c.conditionValue.v6AddrMask = &am;
+    return addV6(false, &c, 1, 15, L"NeuralGuard exempt v6 (subnet)");
+}
+
+bool Enforcer::addPermitRemotePortV6(uint16_t port, uint8_t proto) {
+    // Protocol + remote-port conditions are IP-version-agnostic; installing them
+    // at CONNECT_V6 exempts the same service over IPv6.
+    FWPM_FILTER_CONDITION0 c[2]{};
+    c[0].fieldKey = FWPM_CONDITION_IP_PROTOCOL;
+    c[0].matchType = FWP_MATCH_EQUAL;
+    c[0].conditionValue.type = FWP_UINT8;
+    c[0].conditionValue.uint8 = proto;
+    c[1].fieldKey = FWPM_CONDITION_IP_REMOTE_PORT;
+    c[1].matchType = FWP_MATCH_EQUAL;
+    c[1].conditionValue.type = FWP_UINT16;
+    c[1].conditionValue.uint16 = port;
+    return addV6(false, c, 2, 15, L"NeuralGuard exempt v6 (port)");
 }
 
 bool Enforcer::addPermitAppId(const wchar_t* dosPath, uint16_t port, uint8_t proto) {
@@ -237,7 +286,11 @@ bool Enforcer::addPermitAppId(const wchar_t* dosPath, uint16_t port, uint8_t pro
         c[nc].conditionValue.uint16 = port;
         ++nc;
     }
+    // App-id / proto / port conditions are version-agnostic - permit the app over
+    // BOTH IPv4 and IPv6, else the v6 default-deny would block a baseline app's
+    // IPv6 traffic (a wrong block).
     bool ok = addV4(false, c, nc, 12, L"NeuralGuard baseline permit");
+    ok = addV6(false, c, nc, 12, L"NeuralGuard baseline permit (v6)") && ok;
     FwpmFreeMemory0((void**)&appId);
     return ok;
 }
@@ -281,6 +334,13 @@ bool Enforcer::applyUserRule(const wchar_t* appPath, uint32_t remoteIpv4Host,
     // never be blocked by a user rule.
     bool ok = addV4(block, nc ? c : nullptr, nc, block ? 14 : 13,
                     block ? L"NeuralGuard user block" : L"NeuralGuard user permit");
+    // A rule WITHOUT a v4 address is version-agnostic (app / port / proto) - also
+    // apply it at CONNECT_V6 so a user's app-level permit/block covers IPv6. A
+    // rule pinned to a v4 address is inherently IPv4-only (skip v6).
+    if (!remoteIpv4Host) {
+        ok = addV6(block, nc ? c : nullptr, nc, block ? 14 : 13,
+                   block ? L"NeuralGuard user block (v6)" : L"NeuralGuard user permit (v6)") && ok;
+    }
     if (appId) FwpmFreeMemory0((void**)&appId);
     return ok;
 }
@@ -299,6 +359,24 @@ bool Enforcer::enableDefaultDeny() {
     ok &= addPermitRemotePortV4(123, IPPROTO_UDP);  // NTP
     // Catch-all outbound block (weight 0, lowest -> everything above wins).
     ok &= addV4(true, nullptr, 0, 0, L"NeuralGuard default-deny (outbound v4)");
+
+    // --- IPv6 outbound (Phase B): mirror the Tier-0 exempts + catch-all onto
+    // CONNECT_V6. The multicast + link-local exempts are load-bearing: IPv6
+    // Neighbor Discovery / Router Discovery / MLD run over ff00::/8 and fe80::/10,
+    // and IPv6 stops working entirely if those are blocked.
+    static const unsigned char kLoopback6[16]  = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1};  // ::1
+    static const unsigned char kLinkLocal6[16] = {0xfe, 0x80};                        // fe80::/10
+    static const unsigned char kUla6[16]       = {0xfc};                              // fc00::/7  (ULA)
+    static const unsigned char kMcast6[16]     = {0xff};                              // ff00::/8  (multicast)
+    ok &= addPermitCidrV6(kLoopback6, 128);
+    ok &= addPermitCidrV6(kLinkLocal6, 10);
+    ok &= addPermitCidrV6(kUla6, 7);
+    ok &= addPermitCidrV6(kMcast6, 8);
+    ok &= addPermitRemotePortV6(53, IPPROTO_UDP);   // DNS
+    ok &= addPermitRemotePortV6(53, IPPROTO_TCP);   // DNS/TCP
+    ok &= addPermitRemotePortV6(547, IPPROTO_UDP);  // DHCPv6 (client -> server)
+    ok &= addPermitRemotePortV6(123, IPPROTO_UDP);  // NTP
+    ok &= addV6(true, nullptr, 0, 0, L"NeuralGuard default-deny (outbound v6)");
     return ok;
 }
 

@@ -105,10 +105,10 @@ It's safe — it's read-only. Stop when a normal day is ~95% covered by learned 
   `(application, remote port)` from the DB, then default-deny the rest (auto-revert).
   Verified against the live baseline (84 permits): known app+port flows, unobserved
   is blocked, DNS/SSH keep working. Per-(app,port) granularity is the safe first cut.
-- ⬜ **Full coverage — both directions, both IP versions (see "Full-coverage
-  enforcement" section below).** Today enforcement is outbound-IPv4-only, and
-  learning infers direction from a remote-port heuristic (`< 49152`) with real
-  edge cases. The plan below closes every connection-attributable gap.
+- ◐ **Full coverage — both directions, both IP versions (see "Full-coverage
+  enforcement" section below).** Phase A (direction-from-layer learning) + Phase B
+  (IPv6 outbound enforcement) DONE; Phase C (inbound enforcement) + D (transport
+  ICMP) remain. Closes every connection-attributable gap.
 - ⬜ Per-destination/domain tightening (still open, separate from the above).
 - ◐ `ngtray` — native Win32 tray (icon + Status / **Panic** / Quit + startup
   balloon) **and the notify-pipe + prompt**: tray runs a `\\.\pipe\neuralguard`
@@ -205,12 +205,20 @@ territory — not claimed here without the driver.
   before any enforcement change — accumulates the inbound baseline Phase C needs
   while risking nothing. Immediately fixes the high-port bug.
 
-### Phase B — IPv6 outbound enforcement (moderate risk; mirrors today's v4 path).
-- Generalize the enforcer's filter helpers to `(layer, version)`; add
-  `FWP_BYTE_ARRAY16` / `FWP_V6_ADDR_MASK` address conditions. Mirror the v4 baseline
-  / default-deny / permits onto `CONNECT_V6`.
-- Extend outbound Tier-0 to v6: `::1`, `fe80::/10`, `fc00::/7`, IPv6 DNS, DHCPv6
-  (546/547), NTP. Closes the biggest live hole — IPv6 outbound is unfiltered today.
+### Phase B — IPv6 outbound enforcement. ✅ DONE
+- `Enforcer::addV6` mirrors `addV4` at `ALE_AUTH_CONNECT_V6`; `addPermitCidrV6`
+  uses `FWP_V6_ADDR_AND_MASK` (addr + prefix length). `enableDefaultDeny` now
+  installs v6 Tier-0 exempts (`::1`, `fe80::/10`, `fc00::/7`, `ff00::/8` multicast
+  — ND/MLD die without it — + DNS / DHCPv6 547 / NTP) and a v6 catch-all block.
+- `addPermitAppId` + app-scoped `applyUserRule` install at BOTH layers, so a
+  baseline/user-permitted app works over IPv6 (else v6 default-deny would wrongly
+  block it); v4-address-pinned rules stay v4-only. `panic`/`countRules` already
+  enumerate `CONNECT_V6`, so cleanup covers v6 automatically.
+- VM-verified: filter count 0 → **19** during enforce (10 v4 + 9 v6) → 0 after;
+  v4 still blocks/reverts correctly; `::1` + SSH stay alive; clean timed revert.
+  The real global-v6 drop couldn't be exercised (NAT VM has no IPv6 internet
+  route — `curl -6` fails identically enforced or not), but the v6 catch-all is a
+  structural mirror of the proven v4 one at the parallel layer.
 
 ### Phase C — Inbound enforcement (most gated).
 - **Inbound Tier-0 first, before any deny filter** (anti-lockout core): loopback +
