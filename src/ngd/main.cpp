@@ -114,10 +114,15 @@ void PrintUsage() {
         "  ngd promote [db]              Show stable vs provisional (app, port) pairs.\n"
         "  ngd enforce [db] [seconds]    LIVE: permit the stable baseline, default-deny the\n"
         "                                rest, and prompt the tray on novel connections.\n"
-        "  ngd stop [db]                 Stop NeuralGuard: the background service through\n"
+        "  ngd stop [db] [--off]         Stop NeuralGuard: the background service through\n"
         "                                the SCM (a hard kill would just be restarted by the\n"
         "                                watchdog) plus any foreground enforce/record worker.\n"
-        "                                Needs Administrator.\n"
+        "                                --off also means 'and stay off' (desired_mode=idle);\n"
+        "                                without it your mode is preserved, which is what an\n"
+        "                                installer wants. Needs Administrator.\n"
+        "  ngd mode [enforcing|learning|idle] [db]\n"
+        "                                Show/set what the SERVICE resumes when it starts.\n"
+        "                                No argument just reports it alongside what's running.\n"
         "  ngd baseline [db]             Print the stable permits enforce would install\n"
         "                                (read-only; shows Phase 4d demotion effects).\n"
         "  ngd features [db] [seconds]   Collect completed-flow features (Phase 4 ML data).\n"
@@ -822,6 +827,30 @@ int RunFeatures(int argc, char** argv) {
     return ok ? 0 : 1;
 }
 
+// `ngd mode [enforcing|learning|idle]` - read/set what the SERVICE resumes at
+// startup. Distinct from meta('mode'), which reports what is running right now:
+// this is intent, that is observation. The service used to hardcode enforcement,
+// so a reboot always came up enforcing no matter what you'd chosen.
+int RunMode(ng::Db& db, const char* arg) {
+    if (arg) {
+        if (strcmp(arg, "enforcing") != 0 && strcmp(arg, "learning") != 0 &&
+            strcmp(arg, "idle") != 0) {
+            fprintf(stderr, "usage: ngd mode [enforcing|learning|idle] [db]\n");
+            return 2;
+        }
+        MetaSet(db, "desired_mode", arg);
+    }
+    printf("desired_mode = %-9s  (what the service resumes when it starts)\n",
+           MetaGet(db, "desired_mode", "enforcing").c_str());
+    printf("mode         = %-9s  (what is actually running right now)\n",
+           MetaGet(db, "mode", "idle").c_str());
+    if (arg)
+        printf("\nApplies when the service next starts. To apply it now:\n"
+               "  ngd stop <db>  (WITHOUT --off, which would set desired_mode=idle)\n"
+               "  sc start NeuralGuard\n");
+    return 0;
+}
+
 // `ngd inbound [on|off]` - preview / toggle inbound enforcement (Phase C2).
 // With no argument it PREVIEWS: shows the current mode plus the inbound services
 // that would be permitted, so you can look before you leap. Inbound accepts are
@@ -934,7 +963,18 @@ int main(int argc, char** argv) {
     if (argc >= 2 && (strcmp(argv[1], "install") == 0 || strcmp(argv[1], "uninstall") == 0 ||
                       strcmp(argv[1], "stop") == 0)) {
         if (!IsElevated()) { fprintf(stderr, "service install/uninstall/stop needs Administrator.\n"); return 1; }
-        if (strcmp(argv[1], "stop") == 0) return ng::ServiceStop(argc >= 3 ? argv[2] : "ngpolicy.db");
+        if (strcmp(argv[1], "stop") == 0) {
+            // `--off` = the user asked to stop, so persist it (stay off across
+            // reboots). Without it we only stop, leaving desired_mode alone - what
+            // an installer wants when it stops us just to unlock files.
+            const char* db = "ngpolicy.db";
+            bool off = false;
+            for (int i = 2; i < argc; ++i) {
+                if (strcmp(argv[i], "--off") == 0) off = true;
+                else db = argv[i];
+            }
+            return ng::ServiceStop(db, off);
+        }
         if (strcmp(argv[1], "uninstall") == 0) return ng::ServiceUninstall();
         const char* rel = argc >= 3 ? argv[2] : "ngpolicy.db";   // absolute: service runs from System32
         char abs[MAX_PATH];
@@ -948,6 +988,26 @@ int main(int argc, char** argv) {
 
     // `update` needs no db and no admin (the installer elevates its own steps).
     if (argc >= 2 && strcmp(argv[1], "update") == 0) return RunUpdate(argc, argv);
+
+    // `mode [enforcing|learning|idle] [db]` - read/set what the service resumes at
+    // startup. Just writes meta, so no admin needed. argv[2] is the mode only when
+    // it's literally one of the three; anything else is the db path.
+    if (argc >= 2 && strcmp(argv[1], "mode") == 0) {
+        const char* arg = nullptr;
+        const char* dbp = "ngpolicy.db";
+        if (argc >= 3) {
+            if (strcmp(argv[2], "enforcing") == 0 || strcmp(argv[2], "learning") == 0 ||
+                strcmp(argv[2], "idle") == 0) {
+                arg = argv[2];
+                if (argc >= 4) dbp = argv[3];
+            } else {
+                dbp = argv[2];
+            }
+        }
+        ng::Db db;
+        if (!db.open(dbp)) return 1;
+        return RunMode(db, arg);
+    }
 
     // `inbound [on|off]` - preview/toggle inbound enforcement (read-only preview,
     // no admin; the toggle just writes meta, enforce picks it up on next start).

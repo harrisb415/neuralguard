@@ -9,6 +9,11 @@ namespace ng {
 int ServiceInstall(const char* dbPath);  // create (auto-start, LocalSystem) + start; needs admin
 int ServiceUninstall();                  // stop + delete; needs admin
 int ServiceRun(const char* dbPath);      // SCM entry point (blocks until stopped)
-int ServiceStop(const char* dbPath);     // stop the service (SCM) + any foreground worker; needs admin
+// Stop the service (via the SCM) + any foreground worker; needs admin.
+// recordOff distinguishes the two reasons to stop: true = the USER asked for it,
+// so persist desired_mode='idle' and stay off across reboots; false = maintenance
+// (an installer stopping us to replace files), where clobbering the user's intent
+// would silently leave them unprotected after an upgrade.
+int ServiceStop(const char* dbPath, bool recordOff);
 
 }  // namespace ng

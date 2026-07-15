@@ -75,6 +75,13 @@ const char* kSchema =
     // `ngd inbound` preview until the inbound baseline covers your real services,
     // THEN turn it on, so enabling it can't blindside a listening service.
     "INSERT OR IGNORE INTO meta(k,v) VALUES('inbound_mode','off');"
+    // What the user WANTS to be running, as opposed to meta('mode'), which is what
+    // IS running right now. The service reads this at startup and resumes it, so a
+    // reboot honours the last decision instead of always coming up enforcing.
+    // 'enforcing' | 'learning' | 'idle'. Defaults to 'enforcing' so an upgrade
+    // can never silently leave an existing install unprotected; `ngd stop` (and
+    // the Stop button behind it) is what sets 'idle'.
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('desired_mode','enforcing');"
     // Phase 4 data foundation: one row per COMPLETED TCP flow - the metadata
     // feature vector the ML tier scores (asynchronously, off the decision
     // path). Populated by `ngd features` from GetTcpTable2 + per-connection
@@ -200,6 +207,30 @@ bool Db::open(const char* path) {
 
 void Db::close() {
     if (db_) { sqlite3_close(db_); db_ = nullptr; }
+}
+
+std::string Db::meta(const char* key, const char* dflt) {
+    std::string out = dflt ? dflt : "";
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db_, "SELECT v FROM meta WHERE k=?;", -1, &s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, key, -1, SQLITE_STATIC);
+        if (sqlite3_step(s) == SQLITE_ROW)
+            if (const char* t = (const char*)sqlite3_column_text(s, 0)) out = t;
+        sqlite3_finalize(s);
+    }
+    return out;
+}
+
+void Db::setMeta(const char* key, const std::string& val) {
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "INSERT INTO meta(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v;",
+            -1, &s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_text(s, 1, key, -1, SQLITE_STATIC);
+        bindText(s, 2, val);
+        sqlite3_step(s);
+        sqlite3_finalize(s);
+    }
 }
 
 }  // namespace ng

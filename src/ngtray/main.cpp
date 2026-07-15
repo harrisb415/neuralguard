@@ -131,7 +131,9 @@ void StopAndPanic() {
 
     HWND hwnd = g_nid.hWnd;
     std::thread([hwnd] {
-        RunNgdWait(L"stop \"" + ExeDir() + L"\\ngpolicy.db\"", 25000);
+        // --off = "and stay off": Panic is a decision, and the service is auto-start,
+        // so without a persisted intent it would come back enforcing at next boot.
+        RunNgdWait(L"stop \"" + ExeDir() + L"\\ngpolicy.db\" --off", 25000);
         PostMessageW(hwnd, WM_STOP_DONE, 0, 0);
     }).detach();
 }

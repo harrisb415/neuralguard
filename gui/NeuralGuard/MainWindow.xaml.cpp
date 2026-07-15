@@ -1296,7 +1296,10 @@ namespace winrt::NeuralGuard::implementation
     // set meta('mode')=idle afterwards - so we no longer write that here.
     void MainWindow::StopDaemons()
     {
-        RunTool(L"ngd.exe", L"stop \"" + NgDir() + L"\\ngpolicy.db\"");
+        // --off = "and stay off": pressing Stop is a decision, so it has to outlive
+        // the process. The service is auto-start, and without a persisted intent it
+        // would come back enforcing at the next boot as if Stop never happened.
+        RunTool(L"ngd.exe", L"stop \"" + NgDir() + L"\\ngpolicy.db\" --off");
         UpdateMode();   // the 2s tick settles it once ngd has actually finished
     }
 }

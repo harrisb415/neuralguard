@@ -398,12 +398,34 @@ service is protection before/without a login. TinyWall's shape is the target.
   regardless of what you left it in. Phase A only fixes the "Stop didn't stop it"
   half; durable intent needs `desired_mode`.
 
-### Phase B — Service becomes mode-aware, controlled over IPC ⬜ NOT STARTED
-- Persist a `desired_mode` meta key distinct from the observed `mode` (today `mode`
-  is overwritten on every transition, so no durable record of user intent survives a
-  restart). `ServiceMain` reads `desired_mode` at startup and resumes it for real —
-  including learning (the service needs to be able to run the `Recorder` path, not
-  only `EnforceDaemon`).
+### Phase B — Service becomes mode-aware, controlled over IPC ◐ B1 DONE
+- ✅ **B1 — `desired_mode`, and the service actually resumes it.** New
+  `meta('desired_mode')` (`enforcing` | `learning` | `idle`) records what the user
+  *wants*; `meta('mode')` stays what *is* running. `ServiceMain` no longer hardcodes
+  enforcement — `RunDesiredMode` dispatches to `EnforceDaemon`, to `Recorder`
+  (**learning was previously unreachable from the service at all** — only ngd's
+  foreground CLI ever built one), or to an idle wait that keeps the service alive
+  holding no filters (that's also where B2's command listener will live).
+  - `ngd stop` gained **`--off`** to separate two different intents that were about
+    to be conflated: `--off` = *the user* asked to stop, so persist
+    `desired_mode=idle` and stay off across reboots (Stop button, tray Panic);
+    plain `stop` = maintenance, leave intent alone. Caught while wiring it: the
+    installer calls `ngd stop` to unlock files during an **upgrade**, so had stop
+    always written `idle`, every upgrade would have silently left the user
+    unprotected at the next boot. `ngd install` conversely asserts
+    `desired_mode='enforcing'` — installing the service is an explicit "protect me".
+  - New `ngd mode [enforcing|learning|idle] [db]` reads/sets intent (writes meta
+    only, no admin). Seeded to `enforcing` so upgrades never silently stop
+    protecting; `Db::meta`/`Db::setMeta` added and the ~5 private copies of those
+    two statements start collapsing onto them.
+  - **VM-verified end to end:** enforcing → Stop(`--off`) → *simulated reboot*
+    (`sc start`) → comes up **RUNNING but idle, 0 filters** (old behaviour: straight
+    back to enforcing). `mode learning` → restart → **`mode=learning`, 0 filters**,
+    and confirmed genuinely recording (483,501 → 483,549 flow_events under real
+    traffic) — the service running learning mode for the first time. Plain `ngd stop`
+    preserved `desired_mode=learning`, proving the upgrade path is safe.
+- ⬜ **B2 — live control over IPC** (below). Until it lands, a mode change needs the
+  service restarted (`ngd mode X` → `ngd stop` → `sc start NeuralGuard`).
 - Extend the existing `\\.\pipe\neuralguard` protocol (today: tray-notify only, one
   direction) with request/response command verbs — `MODE`, `ENFORCE`, `LEARN`,
   `STOP`, `PANIC` — so a *running* service can be told to switch modes live, instead

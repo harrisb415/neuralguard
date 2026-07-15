@@ -25,6 +25,12 @@ public:
     sqlite3* handle() const { return db_; }
     std::mutex& mutex() { return mutex_; }
 
+    // meta(k,v) accessors. Every binary reads or writes these (mode, desired_mode,
+    // autonomy, ml_mode, ...) and each had grown its own private copy of the same
+    // two statements; this is the one implementation.
+    std::string meta(const char* key, const char* dflt = "");
+    void setMeta(const char* key, const std::string& val);
+
 private:
     sqlite3* db_ = nullptr;
     std::mutex mutex_;
