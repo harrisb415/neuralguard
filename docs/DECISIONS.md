@@ -71,6 +71,86 @@ scope cuts. ADR-style: each records the original position, the problem, and the 
 
 ---
 
+## The enforcement coverage model
+
+### D-5 — Direction is a WFP *fact* (the layer), never inferred from ports
+
+- **Original (this repo's own early implementation, not the spec):** enforcement
+  was outbound-IPv4-only, and the learning path decided whether a connection was
+  inbound or outbound by testing `remotePort < 49152` — i.e. guessing direction
+  from whether the remote port looked like a "service" port or an ephemeral one.
+- **Problem:** it's a guess with real failure modes in both directions. An outbound
+  connection to a peer listening on a high port (P2P, some game/QUIC services) is
+  wrongly excluded from the baseline; an inbound connection from a client that
+  happened to use a low source port is wrongly included. A firewall that mis-attributes
+  direction either lets traffic slip by or blocks the wrong thing. The heuristic was
+  never a design choice — it was a noise-reduction patch for a bug where inbound
+  peers' ephemeral ports created junk one-off habits.
+- **Decision:** direction comes from the **WFP layer the event was classified at**,
+  which *is* the direction: `ALE_AUTH_CONNECT_V4/V6` = outbound,
+  `ALE_AUTH_RECV_ACCEPT_V4/V6` = inbound. Net events carry a `layerId`; we resolve
+  the four ALE layer ids once at engine-open and map every event definitively.
+  The port heuristic is deleted. Both `habits` and `flow_events` record a
+  `direction` column; rows predating it stay NULL and simply don't qualify for a
+  baseline rather than being mislabelled.
+
+### D-6 — Enforce at the ALE layers, both directions, both IP versions
+
+- **Decision:** filters are installed at all four ALE connection layers. Outbound
+  (`CONNECT_V4` + `CONNECT_V6`) is always on; inbound (`RECV_ACCEPT_V4` + `V6`) is
+  **opt-in** via `meta('inbound_mode')` (default `off`), because turning inbound
+  default-deny on affects a machine's *listening services* and must never be a
+  surprise from an upgrade. Inbound is always *learned* regardless of the mode, and
+  `ngd inbound` previews exactly which services would be permitted before you enable it.
+- **Why inbound default-deny is safe to offer at all:** `RECV_ACCEPT` fires only on
+  **new inbound accepts**. The return traffic of a connection *you* initiated
+  outbound is never re-classified there, so inbound enforcement does not touch
+  browsing, DNS replies, or any established flow — only new connections *to* your
+  listening sockets.
+- **Anti-lockout is structural, not incidental:** the inbound Tier-0 permits
+  (SSH 22, RDP 3389, DHCP/DHCPv6, loopback, link-local) are installed at weight 15
+  *before* the weight-0 catch-all, so no baseline, rule, or ML demotion can ever cut
+  off the management channel.
+
+### D-7 — No transport-layer filters: ICMP is already covered at ALE
+
+- **Original plan (ours):** add `OUTBOUND/INBOUND_TRANSPORT_V4/V6` filters, on the
+  assumption that ICMP/ICMPv6 "aren't ALE connections" and would therefore be a
+  silent hole in a default-deny built only at the ALE layers.
+- **Problem:** that assumption is **false**, and we measured it rather than trusting
+  it. WFP's ALE layers classify ICMP as a connection-like flow, so the existing
+  outbound catch-all already blocks it. Verified on the VM: with outbound
+  default-deny active, `ping 8.8.8.8` returns **"General failure"** (the signature of
+  a WFP block) at 100% loss; with enforcement off the same ping replies normally. The
+  Tier-0 *address* exemptions apply to ICMP correctly too — ICMP to an RFC1918 LAN
+  address is permitted (no "General failure"; it simply gets no reply because the
+  peer's own firewall drops inbound echo), while public ICMP is blocked.
+- **Decision:** **do not add transport-layer filters.** They would be redundant
+  outbound, and actively harmful inbound: a blanket inbound ICMP block breaks Path
+  MTU Discovery (ICMP fragmentation-needed / ICMPv6 *Packet Too Big* — IPv6 cannot
+  fragment, so this blackholes large transfers) and would break IPv6 Neighbor
+  Discovery outright. Inbound ICMP is left unfiltered deliberately: its security
+  value is low (reconnaissance/nuisance), Windows Firewall already drops inbound echo
+  by default, and the breakage risk is high and *subtle*. This is a scope decision,
+  not an oversight.
+- **Corollary — outbound ICMPv6 still works because of the address exemptions.**
+  `fe80::/10` and `ff00::/8` are Tier-0 exempt precisely so Neighbor Discovery /
+  Router Discovery / MLD survive the v6 outbound default-deny. Those two exemptions
+  are load-bearing: without them, enabling IPv6 enforcement takes IPv6 down.
+
+### D-8 — What "zero coverage gaps" honestly means
+
+- **Decision:** within user-mode WFP, coverage is complete for all
+  **connection-attributable** traffic — TCP connects/accepts, UDP flows, and ICMP —
+  in both directions and both IP versions, with direction attributed from the layer
+  rather than guessed.
+- **What is still out of reach, and named rather than papered over:** raw sockets
+  crafted below the ALE layers, and true per-packet inspection (timing, entropy).
+  Those need the kernel callout driver of **Phase 5** (see D-4). We do not claim
+  kernel-level completeness without that driver.
+
+---
+
 ## Scope cuts (dropped for a personal, single-machine tool)
 
 Each is defensible for a funded product and re-openable later; none serves v1.

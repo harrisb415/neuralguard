@@ -105,10 +105,13 @@ It's safe — it's read-only. Stop when a normal day is ~95% covered by learned 
   `(application, remote port)` from the DB, then default-deny the rest (auto-revert).
   Verified against the live baseline (84 permits): known app+port flows, unobserved
   is blocked, DNS/SSH keep working. Per-(app,port) granularity is the safe first cut.
-- ◐ **Full coverage — both directions, both IP versions (see "Full-coverage
-  enforcement" section below).** Phase A (direction-from-layer learning) + Phase B
-  (IPv6 outbound enforcement) DONE; Phase C (inbound enforcement) + D (transport
-  ICMP) remain. Closes every connection-attributable gap.
+- ✅ **Full coverage — both directions, both IP versions (see "Full-coverage
+  enforcement" section below).** Phases A–D done: direction is now read from the
+  WFP layer (no port heuristic), outbound enforces v4+v6, inbound enforces v4+v6
+  (opt-in via `meta('inbound_mode')`, anti-lockout Tier-0 structural), and ICMP was
+  measured to be already covered at ALE (no transport filters needed — see D-7).
+  Every connection-attributable gap is closed; below-ALE raw sockets / per-packet
+  inspection remain Phase 5 by design.
 - ⬜ Per-destination/domain tightening (still open, separate from the above).
 - ◐ `ngtray` — native Win32 tray (icon + Status / **Panic** / Quit + startup
   balloon) **and the notify-pipe + prompt**: tray runs a `\\.\pipe\neuralguard`
@@ -261,10 +264,27 @@ territory — not claimed here without the driver.
 - ⬜ Inbound prompt UX is still a design call (auto-permit-known + log vs.
   prompt-per-conn; a listening server makes per-conn prompts noisy).
 
-### Phase D — Transport-layer ICMP coverage + docs.
-- Add `OUTBOUND/INBOUND_TRANSPORT_V4/V6` filters so ICMP/ICMPv6 isn't a silent gap
-  (ND explicitly permitted). Write the ADR in `DECISIONS.md` (there is currently no
-  ADR for the outbound-only choice — this replaces it).
+### Phase D — ICMP coverage + the ADR. ✅ DONE (premise disproved; no code needed)
+- **The plan here was wrong, and measuring beat assuming.** Phase D assumed ICMP
+  "isn't an ALE connection" and would be a silent hole needing
+  `OUTBOUND/INBOUND_TRANSPORT_V4/V6` filters. **It isn't a hole:** WFP's ALE layers
+  classify ICMP as a connection-like flow, so the existing outbound catch-all
+  already blocks it. VM-proven: with outbound default-deny active `ping 8.8.8.8`
+  → **"General failure"** (the WFP-block signature) at 100% loss; with enforcement
+  off the same ping replies. Tier-0 *address* exemptions apply to ICMP correctly
+  too — LAN ICMP is permitted (no "General failure", just no reply because the
+  peer's firewall drops echo), public ICMP is blocked.
+- ✅ **Decision: do NOT add transport-layer filters.** Redundant outbound, and
+  actively harmful inbound — a blanket inbound ICMP block breaks Path MTU
+  Discovery (ICMP frag-needed / ICMPv6 *Packet Too Big*; IPv6 can't fragment, so
+  it blackholes large transfers) and would break IPv6 ND outright. Inbound ICMP is
+  left unfiltered **deliberately**: low security value (recon/nuisance), Windows
+  Firewall already drops inbound echo by default, high and subtle breakage risk.
+- ✅ **ADRs written** (`docs/DECISIONS.md` D-5…D-8): direction-is-the-layer,
+  the both-directions/both-versions ALE model + structural anti-lockout, the
+  no-transport-filters call with its evidence, and an honest definition of what
+  "zero coverage gaps" means (complete for connection-attributable traffic in
+  user-mode WFP; below-ALE raw sockets + per-packet inspection remain Phase 5).
 
 **Data model / UI (spans phases):** `habits` gains `direction` (key becomes
 `(process_key, dest, port, proto, direction)`); `rules` parses v6 + gains direction
