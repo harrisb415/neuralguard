@@ -114,6 +114,10 @@ void PrintUsage() {
         "  ngd promote [db]              Show stable vs provisional (app, port) pairs.\n"
         "  ngd enforce [db] [seconds]    LIVE: permit the stable baseline, default-deny the\n"
         "                                rest, and prompt the tray on novel connections.\n"
+        "  ngd stop [db]                 Stop NeuralGuard: the background service through\n"
+        "                                the SCM (a hard kill would just be restarted by the\n"
+        "                                watchdog) plus any foreground enforce/record worker.\n"
+        "                                Needs Administrator.\n"
         "  ngd baseline [db]             Print the stable permits enforce would install\n"
         "                                (read-only; shows Phase 4d demotion effects).\n"
         "  ngd features [db] [seconds]   Collect completed-flow features (Phase 4 ML data).\n"
@@ -927,8 +931,10 @@ int main(int argc, char** argv) {
     // Service control - handled before the normal mode parsing.
     if (argc >= 2 && strcmp(argv[1], "service-run") == 0)   // invoked by the SCM
         return ng::ServiceRun(argc >= 3 ? argv[2] : "ngpolicy.db");
-    if (argc >= 2 && (strcmp(argv[1], "install") == 0 || strcmp(argv[1], "uninstall") == 0)) {
-        if (!IsElevated()) { fprintf(stderr, "service install/uninstall needs Administrator.\n"); return 1; }
+    if (argc >= 2 && (strcmp(argv[1], "install") == 0 || strcmp(argv[1], "uninstall") == 0 ||
+                      strcmp(argv[1], "stop") == 0)) {
+        if (!IsElevated()) { fprintf(stderr, "service install/uninstall/stop needs Administrator.\n"); return 1; }
+        if (strcmp(argv[1], "stop") == 0) return ng::ServiceStop(argc >= 3 ? argv[2] : "ngpolicy.db");
         if (strcmp(argv[1], "uninstall") == 0) return ng::ServiceUninstall();
         const char* rel = argc >= 3 ? argv[2] : "ngpolicy.db";   // absolute: service runs from System32
         char abs[MAX_PATH];

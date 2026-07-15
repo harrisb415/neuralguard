@@ -1,6 +1,5 @@
 #pragma once
 #include <windows.h>
-#include <tlhelp32.h>   // CreateToolhelp32Snapshot (Stop terminates ngd workers)
 #include <shellapi.h>   // ShellExecuteExW (elevated tool launch)
 #include <commdlg.h>    // GetOpenFileNameW / GetSaveFileNameW (rules export/import)
 #pragma comment(lib, "Shell32.lib")

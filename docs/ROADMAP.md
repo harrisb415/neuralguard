@@ -318,6 +318,107 @@ auto-revert dead-man switch; dynamic WFP session already means crash = fail-open
 (now covers inbound); management Tier-0 verified installed before any inbound deny;
 VM-only until shadow mode is watched on real hardware.
 
+## Process consolidation — one backend, one frontend
+
+**Goal:** two executables, not four. `ngd` (the Windows service) becomes the single
+owner of all WFP state, controlled only over IPC; the tray and the dashboard merge
+into one frontend process; `ngctl` stops being able to touch WFP on its own.
+
+**Why — two real bugs, one root shape.** Nothing in the system is the single source
+of truth for "what should be running right now":
+- [`ServiceMain`](../src/ngd/service.cpp) hardcodes an `EnforceDaemon` and
+  `SetMetaMode(db, "enforcing")` on every start. There's no learning/off mode for the
+  service — `Recorder` (learning) is only ever instantiated by the foreground CLI —
+  and no persisted "what did the user actually want" to resume.
+- The dashboard's `MainWindow::StopDaemons()` and ngtray's `StopAndPanic()` both
+  `TerminateProcess` any process literally named `ngd.exe`. If the service is
+  installed, that's the service's process — the SCM sees an unexpected exit, not a
+  clean stop, and `ServiceInstall`'s configured `SC_ACTION_RESTART` (twice, 5s apart)
+  brings it straight back up into the hardcoded enforce path. **Clicking Stop can
+  silently revert to enforcing within seconds — not just after a reboot.**
+- Structurally, three independent places can each hold live WFP filters against the
+  same provider: the service's `EnforceDaemon`, a foreground `ngd.exe enforce`/`record`
+  spawned fresh by the dashboard's Enforce/Learn buttons (`RunTool(...)`, completely
+  unaware the service exists), and `ngctl` (links `ngcore`, opens its own dynamic
+  `Enforcer` session for `enforce`/`enforce-in`/`panic`). Only a one-shot cleanup at
+  install time (`StopManualEnforcers`) papers over the overlap.
+
+**Prior art:** TinyWall and Windows Defender Firewall both use exactly two roles — one
+privileged backend that is the *only* thing touching the filtering engine, and one
+frontend process that is simultaneously the tray icon and the window, talking to the
+backend over IPC/RPC. simplewall skips the service entirely (single always-elevated
+process) — not an option here, since the whole point of installing NeuralGuard as a
+service is protection before/without a login. TinyWall's shape is the target.
+
+### Phase A — Stop/Panic stop crashing the service ✅ DONE
+- ✅ **New `ngd stop [db]`** owns the distinction both UIs were getting wrong: the
+  service is stopped through the SCM (`ControlService(SERVICE_CONTROL_STOP)`, then
+  poll until it reports `STOPPED` — `ControlService` only *requests* the stop), while
+  a foreground worker, which has no SCM lifecycle, is killed as before (its dynamic
+  WFP session tears down with it = fail-open). `StopManualEnforcers` gained an
+  `excludePid` so the sweep can never touch the service's own process.
+- ✅ **Both UIs delegate to it.** `MainWindow::StopDaemons()` and ngtray's
+  `StopAndPanic()` no longer enumerate processes at all — the by-image-name kill is
+  gone from both. The tray runs it off the UI thread and freezes its mode poll until
+  the stop lands (`g_stopping` + `WM_STOP_DONE`), so the icon can't flap back to
+  green while the daemon is still legitimately unwinding.
+- ✅ **`meta('mode')` is now set by the thing that did the stopping.** The UIs used to
+  write `idle` speculatively; since mode is only touched on transitions, an optimistic
+  `idle` written before a stop that then *failed* was a lie nothing would ever
+  correct. `ngd stop` writes it, and only when the stop actually succeeded.
+- ✅ **VM-verified, including reproducing the bug first.** With the old binary, a
+  kill-by-image-name showed `STOPPED` (so the UI looked right) and the service was
+  back **RUNNING under a new PID ~10s later**; the SCM's own event-log entry spells
+  it out: *"terminated unexpectedly … corrective action will be taken in 5000
+  milliseconds: Restart the service."* With the fix: service-only → stopped, still
+  stopped after 15s, filters 0, `mode=idle`; worker-only → *"Stopped 1 foreground
+  worker(s)"*, 107 filters → 0; **both at once** → *"service stopped (filters
+  reverted)"* + *"Stopped 1 foreground worker(s)"*, and 15s later both still gone —
+  proving the service went through the SCM and was never hard-killed. Re-running
+  against nothing prints *"Nothing to stop"* and exits 0.
+- **Still open, by design (Phase B):** the service is `SERVICE_AUTO_START` and
+  `ServiceMain` hardcodes enforce, so a **reboot** still comes up enforcing
+  regardless of what you left it in. Phase A only fixes the "Stop didn't stop it"
+  half; durable intent needs `desired_mode`.
+
+### Phase B — Service becomes mode-aware, controlled over IPC ⬜ NOT STARTED
+- Persist a `desired_mode` meta key distinct from the observed `mode` (today `mode`
+  is overwritten on every transition, so no durable record of user intent survives a
+  restart). `ServiceMain` reads `desired_mode` at startup and resumes it for real —
+  including learning (the service needs to be able to run the `Recorder` path, not
+  only `EnforceDaemon`).
+- Extend the existing `\\.\pipe\neuralguard` protocol (today: tray-notify only, one
+  direction) with request/response command verbs — `MODE`, `ENFORCE`, `LEARN`,
+  `STOP`, `PANIC` — so a *running* service can be told to switch modes live, instead
+  of the dashboard spawning a competing foreground `ngd.exe` to get a different mode.
+- `ngctl` becomes a thin pipe **client** for these verbs and stops calling `Enforcer`
+  itself. (Its standalone timed test commands — `enforce <seconds>`, `enforce-in
+  <seconds>` — either move behind a debug flag or retire once the dashboard's own
+  controls are trusted; decide when we get there.)
+- This closes the structural half of bug 1 (no learning mode, no persistence) and
+  the three-independent-WFP-owners problem in the same pass.
+
+### Phase C — Merge `ngtray` into the WinUI dashboard ⬜ NOT STARTED
+- One frontend process (`NeuralGuard.exe`): owns the tray icon itself (`Shell_NotifyIcon`
+  interop from the WinUI app, or `Microsoft.Windows.AppNotifications` for the
+  balloon-equivalent), minimizes-to-tray instead of closing, and is the only thing
+  launched at login.
+- Right-click menu (Dashboard / Status / Panic / Quit) sends the Phase B pipe verbs
+  and renders the result in-app (an InfoBar) — retires the `cmd.exe /k ngctl status`
+  window entirely.
+- `ngtray.exe` is retired as a shipped binary; its Win32 tray/menu code folds into
+  the WinUI app.
+
+### Phase D — Installer catches up ⬜ NOT STARTED
+- Single Start Menu / Desktop shortcut → the merged `NeuralGuard.exe`.
+- The "start the tray at login" task becomes checked by default (it's now the only
+  way to see or control an installed service) rather than opt-in and unchecked.
+- `[Files]`/`[Icons]` drop `ngtray.exe`; `UninstallDisplayIcon` points at the merged exe.
+
+**Non-goal:** one process total. Session-0 isolation means a LocalSystem service can
+never own UI in the interactive desktop session — two processes (backend service +
+frontend tray/dashboard) is the real floor, not one.
+
 ## Phase 3 — Habit scoring & autonomy
 
 **Goal:** fewer prompts, smarter defaults — still no ML.

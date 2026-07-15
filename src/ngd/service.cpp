@@ -29,25 +29,46 @@ std::wstring Wide(const std::string& s) {
     return w;
 }
 
-// Terminate any manually-launched enforcer (another ngd.exe running `enforce`).
-// A dynamic enforce session and the service both claim the same WFP provider,
-// so the service can't start while one is live. Killing the manual enforcer
-// closes its dynamic WFP session, which auto-removes its provider/filters
-// (fail-open by design), leaving the provider free for the service to claim.
-void StopManualEnforcers() {
+// Terminate manually-launched foreground workers (another ngd.exe running
+// `enforce`/`record`). A dynamic enforce session and the service both claim the
+// same WFP provider, so the service can't start while one is live. Killing the
+// manual enforcer closes its dynamic WFP session, which auto-removes its
+// provider/filters (fail-open by design), leaving the provider free to claim.
+//
+// A foreground worker has no SCM lifecycle, so a kill genuinely IS its stop.
+// `excludePid` exists for the one case where that ISN'T true: the service's own
+// process, which must only ever be stopped through the SCM (see ServiceStop).
+// Returns how many were terminated.
+int StopManualEnforcers(DWORD excludePid = 0) {
     DWORD self = GetCurrentProcessId();
     HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap == INVALID_HANDLE_VALUE) return;
+    if (snap == INVALID_HANDLE_VALUE) return 0;
     PROCESSENTRY32W pe{}; pe.dwSize = sizeof(pe);
-    bool killed = false;
+    int killed = 0;
     for (BOOL ok = Process32FirstW(snap, &pe); ok; ok = Process32NextW(snap, &pe)) {
         if (pe.th32ProcessID == self) continue;                 // never our own process
+        if (excludePid && pe.th32ProcessID == excludePid) continue;   // never the service
         if (lstrcmpiW(pe.szExeFile, L"ngd.exe") != 0) continue;
         HANDLE p = OpenProcess(PROCESS_TERMINATE | SYNCHRONIZE, FALSE, pe.th32ProcessID);
-        if (p) { TerminateProcess(p, 0); WaitForSingleObject(p, 3000); CloseHandle(p); killed = true; }
+        if (p) { TerminateProcess(p, 0); WaitForSingleObject(p, 3000); CloseHandle(p); ++killed; }
     }
     CloseHandle(snap);
     if (killed) Sleep(500);   // let the killed enforcer's dynamic WFP session tear down
+    return killed;
+}
+
+// ControlService only *requests* a stop; the service still has to unwind (revert
+// filters, close the WFP session). Poll until it reports STOPPED so callers can
+// tell the user something true rather than something hopeful.
+bool WaitForStopped(SC_HANDLE svc, DWORD timeoutMs) {
+    for (DWORD waited = 0;; waited += 250) {
+        SERVICE_STATUS_PROCESS ssp{}; DWORD need = 0;
+        if (!QueryServiceStatusEx(svc, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp, sizeof(ssp), &need))
+            return false;
+        if (ssp.dwCurrentState == SERVICE_STOPPED) return true;
+        if (waited >= timeoutMs) return false;
+        Sleep(250);
+    }
 }
 
 void SetState(DWORD state, DWORD exitCode = 0) {
@@ -151,6 +172,65 @@ int ServiceInstall(const char* dbPath) {
     CloseServiceHandle(svc);
     CloseServiceHandle(scm);
     return 0;
+}
+
+// Stop everything NeuralGuard has running - each thing the way it's meant to be
+// stopped, which is the whole point of this function existing.
+//
+// The service MUST go through the SCM. TerminateProcess on it doesn't read as a
+// stop, it reads as a *crash*, and ServiceInstall deliberately configures
+// SC_ACTION_RESTART as the failure action - so a hard kill gets the service
+// restarted 5s later, straight back into the enforcing path ServiceMain hardcodes.
+// That is exactly the "Stop didn't stop it, it came back enforcing" bug: the UI
+// was killing by image name, and the watchdog was doing its job.
+//
+// A foreground worker (`ngd enforce`/`record`, launched by the dashboard) is the
+// opposite case: no SCM lifecycle, so a kill is the only stop it has, and its
+// dynamic WFP session tears down with it (fail-open by design).
+int ServiceStop(const char* dbPath) {
+    DWORD svcPid = 0;
+    bool wasRunning = false, stopped = false;
+
+    if (SC_HANDLE scm = OpenSCManagerW(nullptr, nullptr, SC_MANAGER_CONNECT)) {
+        if (SC_HANDLE svc = OpenServiceW(scm, kSvcName, SERVICE_STOP | SERVICE_QUERY_STATUS)) {
+            SERVICE_STATUS_PROCESS ssp{}; DWORD need = 0;
+            if (QueryServiceStatusEx(svc, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp, sizeof(ssp), &need)) {
+                svcPid = ssp.dwProcessId;
+                wasRunning = ssp.dwCurrentState != SERVICE_STOPPED;
+            }
+            if (wasRunning) {
+                SERVICE_STATUS st{};
+                if (!ControlService(svc, SERVICE_CONTROL_STOP, &st))
+                    fprintf(stderr, "stop: ControlService failed: %lu\n", GetLastError());
+                else if (!WaitForStopped(svc, 20000))
+                    fprintf(stderr, "stop: service did not report STOPPED within 20s.\n");
+                else {
+                    stopped = true;
+                    svcPid = 0;   // gone - nothing for the sweep below to avoid
+                }
+            }
+            CloseServiceHandle(svc);
+        }
+        CloseServiceHandle(scm);
+    }
+
+    const int workers = StopManualEnforcers(svcPid);   // svcPid != 0 only if its stop FAILED
+
+    if (stopped) printf("NeuralGuard service stopped (filters reverted).\n");
+    if (workers) printf("Stopped %d foreground worker(s).\n", workers);
+    if (!wasRunning && !workers) printf("Nothing to stop - NeuralGuard wasn't running.\n");
+
+    // Record the outcome where the UI reads it. A killed worker can never write
+    // this itself (TerminateProcess gives it no chance to), and the UI must not
+    // write it speculatively: meta('mode') is only touched on transitions, so an
+    // optimistic "idle" written before a stop that then FAILED is a lie nothing
+    // would ever correct. Only the thing that actually did the stopping knows.
+    const bool allStopped = (!wasRunning || stopped);
+    if (allStopped && dbPath && *dbPath) {
+        Db db;
+        if (db.open(dbPath)) SetMetaMode(db, "idle");
+    }
+    return allStopped ? 0 : 1;
 }
 
 int ServiceUninstall() {

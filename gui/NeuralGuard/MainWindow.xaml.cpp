@@ -1273,7 +1273,7 @@ namespace winrt::NeuralGuard::implementation
     {
         StopDaemons();
         if (RunTool(L"ngctl.exe", L"panic"))
-            Notify(L"Stopped; filters removed (failing open).", InfoBarSeverity::Informational);
+            Notify(L"Stopping NeuralGuard; filters removed (failing open).", InfoBarSeverity::Informational);
     }
     void MainWindow::OnPanic(IInspectable const&, RoutedEventArgs const&)
     {
@@ -1284,26 +1284,19 @@ namespace winrt::NeuralGuard::implementation
 
     // panic() only pulls the WFP filters; the ngd worker keeps running and would
     // keep meta('mode') pinned at 'enforcing'/'learning', so the status bar lied.
-    // Terminate the worker(s) and reset the mode to idle so Stop/Panic are honest.
+    // Stop the worker(s) so Stop/Panic are honest.
+    //
+    // This delegates to `ngd stop` rather than killing ngd.exe by image name here,
+    // because that kill was wrong for the one process it was most likely to hit:
+    // if the background service is installed, its process is called ngd.exe too,
+    // and terminating it looks like a crash to the SCM - whose restart-on-failure
+    // policy brought it straight back up enforcing. ngd owns the distinction (SCM
+    // stop for the service, kill for a foreground worker) and, being the thing
+    // that actually performs the stop, is also the only thing that can honestly
+    // set meta('mode')=idle afterwards - so we no longer write that here.
     void MainWindow::StopDaemons()
     {
-        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snap != INVALID_HANDLE_VALUE)
-        {
-            PROCESSENTRY32W pe{}; pe.dwSize = sizeof(pe);
-            if (Process32FirstW(snap, &pe))
-            {
-                do {
-                    if (_wcsicmp(pe.szExeFile, L"ngd.exe") == 0)
-                    {
-                        HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
-                        if (h) { TerminateProcess(h, 0); CloseHandle(h); }
-                    }
-                } while (Process32NextW(snap, &pe));
-            }
-            CloseHandle(snap);
-        }
-        MetaSet("mode", "idle");
-        UpdateMode();
+        RunTool(L"ngd.exe", L"stop \"" + NgDir() + L"\\ngpolicy.db\"");
+        UpdateMode();   // the 2s tick settles it once ngd has actually finished
     }
 }

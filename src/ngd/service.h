@@ -9,5 +9,6 @@ namespace ng {
 int ServiceInstall(const char* dbPath);  // create (auto-start, LocalSystem) + start; needs admin
 int ServiceUninstall();                  // stop + delete; needs admin
 int ServiceRun(const char* dbPath);      // SCM entry point (blocks until stopped)
+int ServiceStop(const char* dbPath);     // stop the service (SCM) + any foreground worker; needs admin
 
 }  // namespace ng

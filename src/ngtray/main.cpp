@@ -12,8 +12,8 @@
 
 #include <windows.h>
 #include <shellapi.h>
-#include <tlhelp32.h>
 
+#include <atomic>
 #include <string>
 #include <thread>
 
@@ -22,6 +22,7 @@
 namespace {
 
 constexpr UINT WM_TRAY = WM_APP + 1;
+constexpr UINT WM_STOP_DONE = WM_APP + 2;   // posted by the stop thread (see StopAndPanic)
 constexpr UINT ID_TIMER_MODE = 1;
 enum { ID_STATUS = 1, ID_PANIC = 2, ID_QUIT = 3, ID_DASHBOARD = 4 };
 
@@ -31,6 +32,7 @@ enum { IDI_TRAY_LEARNING = 10, IDI_TRAY_ENFORCING = 11, IDI_TRAY_PANIC = 12, IDI
 NOTIFYICONDATAW g_nid{};
 HINSTANCE g_hInst = nullptr;
 int g_curIconId = 0;   // last icon resource id set, so we only touch the shell icon on change
+std::atomic<bool> g_stopping{false};   // a stop is in flight; freeze the mode poll
 
 void RunCtl(const wchar_t* sub);   // forward decl - defined below, used by StopAndPanic
 
@@ -71,6 +73,10 @@ std::string ReadMode() {
 // Swap the tray icon + tooltip to match live mode. Cheap to call often - it
 // only touches the shell icon when the resource id actually changes.
 void UpdateTrayIcon() {
+    // Mid-stop the daemon is still unwinding, so meta('mode') legitimately still
+    // reads 'enforcing' for a moment. Polling it here would flap the icon back to
+    // green right after the user hit Panic; hold the red until the stop lands.
+    if (g_stopping.load()) return;
     std::string mode = ReadMode();
     int id = IDI_TRAY_OFFLINE;
     const wchar_t* label = L"idle";
@@ -84,44 +90,50 @@ void UpdateTrayIcon() {
     Shell_NotifyIconW(NIM_MODIFY, &g_nid);
 }
 
-// Panic must be honest: ngctl panic only pulls the WFP filters, but a running
-// ngd worker keeps meta('mode') pinned at 'enforcing'/'learning' - the tray
-// would keep showing green/cyan after the user just asked it to stop. So kill
-// the worker and reset the mode ourselves (same fix as the dashboard's
-// MainWindow::StopDaemons), then flash the red Panic icon immediately for
-// feedback; the next poll tick settles it to grey once the reset lands.
+// Run `ngd <args>` hidden and wait for it to finish. The tray is elevated, so the
+// child inherits the token - no UAC prompt, and no shell needed (ngd carries no
+// elevation manifest; it checks its own token at runtime).
+bool RunNgdWait(const std::wstring& args, DWORD timeoutMs) {
+    std::wstring dir = ExeDir();
+    std::wstring cmd = L"\"" + dir + L"\\ngd.exe\" " + args;
+    STARTUPINFOW si{}; si.cb = sizeof(si);
+    PROCESS_INFORMATION pi{};
+    if (!CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, dir.c_str(), &si, &pi))
+        return false;
+    WaitForSingleObject(pi.hProcess, timeoutMs);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return true;
+}
+
+// Panic must be honest: ngctl panic only pulls the WFP filters, but a running ngd
+// worker keeps meta('mode') pinned at 'enforcing'/'learning' - the tray would keep
+// showing green/cyan after the user just asked it to stop. So stop the daemon
+// first, then panic to clear anything left.
+//
+// Stopping is `ngd stop`'s job, not ours. We used to TerminateProcess anything
+// named ngd.exe - which is precisely wrong when the background service is
+// installed, since that's its process name too: the SCM reads a kill as a crash,
+// and its restart-on-failure policy brought the service straight back up
+// enforcing. ngd knows the difference (SCM stop for the service, kill for a
+// foreground worker) and owns the meta('mode') reset, being the only thing that
+// knows whether the stop actually succeeded.
+//
+// It can take a moment, so it runs off the UI thread; the red Panic icon shows
+// immediately and holds (g_stopping freezes the poll) until WM_STOP_DONE lands.
 void StopAndPanic() {
+    g_stopping = true;
     g_curIconId = IDI_TRAY_PANIC;
     g_nid.hIcon = LoadIconW(g_hInst, MAKEINTRESOURCEW(IDI_TRAY_PANIC));
     wcscpy_s(g_nid.szTip, L"NeuralGuard - panic");
     Shell_NotifyIconW(NIM_MODIFY, &g_nid);
 
-    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-    if (snap != INVALID_HANDLE_VALUE) {
-        PROCESSENTRY32W pe{}; pe.dwSize = sizeof(pe);
-        if (Process32FirstW(snap, &pe)) {
-            do {
-                if (_wcsicmp(pe.szExeFile, L"ngd.exe") == 0) {
-                    if (HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID)) {
-                        TerminateProcess(h, 0);
-                        CloseHandle(h);
-                    }
-                }
-            } while (Process32NextW(snap, &pe));
-        }
-        CloseHandle(snap);
-    }
-
-    ng::Db d;
-    if (d.open(DbPathU8().c_str())) {
-        sqlite3_stmt* s = nullptr;
-        sqlite3_prepare_v2(d.handle(),
-            "INSERT INTO meta(k,v) VALUES('mode','idle') ON CONFLICT(k) DO UPDATE SET v='idle';",
-            -1, &s, nullptr);
-        sqlite3_step(s); sqlite3_finalize(s);
-    }
-
-    RunCtl(L"panic");   // visible ngctl output confirming filters were removed
+    HWND hwnd = g_nid.hWnd;
+    std::thread([hwnd] {
+        RunNgdWait(L"stop \"" + ExeDir() + L"\\ngpolicy.db\"", 25000);
+        PostMessageW(hwnd, WM_STOP_DONE, 0, 0);
+    }).detach();
 }
 
 // Run `ngctl <cmd>` elevated, keeping a console open so the output is visible.
@@ -257,6 +269,11 @@ LRESULT CALLBACK WndProc(HWND h, UINT msg, WPARAM w, LPARAM l) {
                 case ID_PANIC:  StopAndPanic();     break;
                 case ID_QUIT:   DestroyWindow(h);  break;
             }
+            return 0;
+        case WM_STOP_DONE:
+            g_stopping = false;
+            RunCtl(L"panic");   // visible ngctl output confirming filters were removed
+            UpdateTrayIcon();   // ngd set the mode; show what it actually is now
             return 0;
         case WM_TIMER:
             if (w == ID_TIMER_MODE) UpdateTrayIcon();
