@@ -163,7 +163,7 @@ bool RunOneMode(const std::string& desired, Db& db, IdentityResolver& resolver,
 bool RunModeLoop(Db& db, IdentityResolver& resolver, DnsWatcher& dns, HabitTracker& habits) {
     for (;;) {
         g_modeSwitch = false;
-        if (!RunOneMode(db.meta("desired_mode", "enforcing"), db, resolver, dns, habits))
+        if (!RunOneMode(db.meta("desired_mode", "idle"), db, resolver, dns, habits))
             return false;   // setup failed: report it rather than silently spinning or idling
         // Only a switch continues the loop; the SCM stopping us ends it.
         if (g_svcStopping || !g_modeSwitch) return true;
@@ -178,7 +178,7 @@ std::string HandleCommand(Db& db, const std::string& req) {
     const std::string arg = (sp == std::string::npos) ? "" : req.substr(sp + 1);
 
     if (verb == "STATUS")
-        return "OK mode=" + db.meta("mode", "idle") + " desired=" + db.meta("desired_mode", "enforcing");
+        return "OK mode=" + db.meta("mode", "idle") + " desired=" + db.meta("desired_mode", "idle");
 
     if (verb == "MODE") {
         if (arg != "enforcing" && arg != "learning" && arg != "idle")
@@ -311,13 +311,14 @@ int ServiceInstall(const char* dbPath) {
     fa.lpsaActions = acts;
     ChangeServiceConfig2W(svc, SERVICE_CONFIG_FAILURE_ACTIONS, &fa);
 
-    // Installing the service is an explicit "protect me": record that intent, or a
-    // db left at desired_mode='idle' by an earlier Stop would make the freshly
-    // installed service come up idle and quietly enforce nothing.
-    {
-        Db db;
-        if (db.open(dbPath)) db.setMeta("desired_mode", "enforcing");
-    }
+    // Deliberately does NOT touch desired_mode. Installing the service is
+    // infrastructure - it makes protection POSSIBLE, it is not the same act as the
+    // user asking to BE protected. Forcing 'enforcing' here meant clicking
+    // "Install as service" once, on a machine that had never been told to enforce
+    // anything, jumped straight to enforcing with no button ever pressed for it.
+    // Whatever's already in the db - idle for a database that's never had a mode
+    // chosen (see db.cpp's seed), or whatever the user explicitly set before
+    // installing - is what the service picks up the moment it actually starts.
 
     // Free the WFP provider from any manually-launched enforcer, or the
     // service's own enforcer can't claim it and the service exits at once.

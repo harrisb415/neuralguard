@@ -11,12 +11,20 @@ using namespace Microsoft::UI::Xaml;
 
 namespace winrt::NeuralGuard::implementation
 {
-    // Append a progress/error marker so startup failures are diagnosable without a debugger.
+    // Append a progress/error marker so startup failures are diagnosable without a
+    // debugger. Written next to the running exe rather than a fixed
+    // %USERPROFILE%\NeuralGuard - the app can be installed per-machine now (see
+    // installer/NeuralGuard.iss), and a hardcoded per-user path would silently
+    // write to a folder that doesn't even exist for that install, breaking the
+    // one diagnostic this app has for a startup that fails before any UI shows.
     static void Mark(std::string const& s)
     {
-        wchar_t home[MAX_PATH]{};
-        GetEnvironmentVariableW(L"USERPROFILE", home, MAX_PATH);
-        std::wstring p = std::wstring(home) + L"\\NeuralGuard\\dashboard\\progress.txt";
+        wchar_t exePath[MAX_PATH]{};
+        GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+        std::wstring dir(exePath);
+        size_t slash = dir.find_last_of(L"\\/");
+        dir = (slash == std::wstring::npos) ? L"." : dir.substr(0, slash);
+        std::wstring p = dir + L"\\progress.txt";
         HANDLE h = CreateFileW(p.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ | FILE_SHARE_WRITE,
                                nullptr, OPEN_ALWAYS, 0, nullptr);
         if (h != INVALID_HANDLE_VALUE)

@@ -4,13 +4,17 @@
 ;   ISCC.exe /DAppVersion=1.0.0 /DSourceDir=..\dist\stage installer\NeuralGuard.iss
 ;
 ; NeuralGuard is a single-user, per-machine tool (see README "What it is
-; not"): there is no multi-user/shared install story, and the dashboard
-; writes directly to its own policy database for everyday actions (adding a
-; rule, changing autonomy) without elevating. So this installs per-user,
-; with no admin prompt at install time - only the actions that genuinely
-; need it (installing the background service, flipping on enforcement)
-; elevate individually, at the moment they're used, exactly as they do when
-; run from a build instead of an installer.
+; not") - one policy database, no enterprise multi-user story - but it can
+; still be INSTALLED either per-user or per-machine, and Inno's own
+; admin-mode dialog (PrivilegesRequiredOverridesAllowed=dialog) offers that
+; choice. DefaultDirName/the startup shortcut use the "auto" constants
+; ({autopf}, {autostartup}) specifically so that choice is honoured - a
+; literal path like {%USERPROFILE}\NeuralGuard would ignore it and install
+; per-user regardless of what was picked, which is what used to happen here.
+;
+; The dashboard's manifest requires Administrator (it commands the service
+; over a pipe that only admits Administrators - see app.manifest), so it
+; elevates once at launch rather than per-action.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -28,7 +32,7 @@ AppPublisher=Brendan Harris
 AppPublisherURL=https://github.com/harrisb415/NeuralGuard
 AppSupportURL=https://github.com/harrisb415/NeuralGuard/issues
 AppUpdatesURL=https://github.com/harrisb415/NeuralGuard/releases
-DefaultDirName={%USERPROFILE}\NeuralGuard
+DefaultDirName={autopf}\NeuralGuard
 DefaultGroupName=NeuralGuard
 DisableDirPage=no
 DisableProgramGroupPage=yes
@@ -80,7 +84,7 @@ Type: files; Name: "{userstartup}\NeuralGuard.lnk"
 ; One entry, one frontend. --tray starts it as just an icon, no window.
 Name: "{group}\NeuralGuard"; Filename: "{app}\dashboard\NeuralGuard.exe"
 Name: "{group}\Uninstall NeuralGuard"; Filename: "{uninstallexe}"
-Name: "{userstartup}\NeuralGuard"; Filename: "{app}\dashboard\NeuralGuard.exe"; Parameters: "--tray"; Tasks: startup
+Name: "{autostartup}\NeuralGuard"; Filename: "{app}\dashboard\NeuralGuard.exe"; Parameters: "--tray"; Tasks: startup
 
 [Run]
 ; The dashboard's manifest requires Administrator (it commands the service over a

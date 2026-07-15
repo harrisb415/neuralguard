@@ -841,7 +841,7 @@ int RunMode(ng::Db& db, const char* arg) {
         MetaSet(db, "desired_mode", arg);
     }
     printf("desired_mode = %-9s  (what the service resumes when it starts)\n",
-           MetaGet(db, "desired_mode", "enforcing").c_str());
+           MetaGet(db, "desired_mode", "idle").c_str());
     printf("mode         = %-9s  (what is actually running right now)\n",
            MetaGet(db, "mode", "idle").c_str());
     if (arg)

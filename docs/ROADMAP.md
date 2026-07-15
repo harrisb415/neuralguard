@@ -510,6 +510,34 @@ service is protection before/without a login. TinyWall's shape is the target.
 never own UI in the interactive desktop session — two processes (backend service +
 frontend tray/dashboard) is the real floor, not one.
 
+### Post-release fixes (found by actually using v1.5.0) ✅ DONE — shipped as v1.5.1
+Both found within hours, from the user installing on their physical host and
+reporting exactly what they saw — not from VM testing, which hadn't exercised
+either path.
+- ✅ **Install-as-service still jumped to enforcing with no button pressed.** B1's
+  fix made the service resume `desired_mode`, but two spots still forced it to
+  `enforcing`: the schema seed's default for a brand-new database, and an explicit
+  write in `ServiceInstall()` reasoned as "installing is an implicit protect-me" —
+  which is exactly the presumption the user called out: *"nothing should ever go
+  right to enforce mode unless i press enforce."* Fresh databases now default to
+  `idle`; `ServiceInstall()` no longer touches `desired_mode` at all. VM-verified
+  the real failure mode: uninstall the service, set `desired_mode=idle`, reinstall
+  (the literal "Install as service" button path) → `mode=idle desired=idle`, 0
+  filters — where it previously would have jumped to enforcing.
+- ✅ **Choosing "install for all users" silently installed per-user anyway.**
+  `DefaultDirName={%USERPROFILE}\NeuralGuard` is a literal path that ignores which
+  install mode Inno's own admin-mode dialog resolved to. Switched to `{autopf}`
+  (Program Files in per-machine mode, falls back correctly in per-user mode) and
+  the login-startup shortcut from `{userstartup}` to `{autostartup}` to match.
+  `[InstallDelete]` still cleans up the old always-per-user shortcut on upgrade.
+- ✅ **Found while fixing the above, not reported:** the dashboard's own startup
+  diagnostics log (`App.xaml.cpp`'s `Mark()`) hardcoded
+  `%USERPROFILE%\NeuralGuard\dashboard\progress.txt` — for a per-machine install
+  this would have silently written to a folder that doesn't exist, breaking the one
+  diagnostic tool for a startup that fails before any window shows. Now derives the
+  path from the running exe's own module path (`NgDir()` already did this
+  correctly; `Mark()` was the one place that hadn't been updated to match).
+
 ## Phase 3 — Habit scoring & autonomy
 
 **Goal:** fewer prompts, smarter defaults — still no ML.

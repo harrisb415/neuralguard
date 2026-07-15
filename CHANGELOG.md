@@ -5,6 +5,36 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-07-15
+
+Two bugs found within hours of shipping 1.5.0 by actually using it on a real
+machine.
+
+### Fixed
+
+- **Installing the service jumped straight to enforcing, with no button ever
+  pressed for it.** 1.5.0 had the service resume `desired_mode` on every start,
+  but two spots still forced it to `enforcing`: the schema default for a brand
+  new database, and an explicit write in `ngd install`/"Install as service"
+  reasoned as "installing is an implicit protect-me." Neither should have
+  decided that for you. A database that's never had a mode chosen now defaults
+  to `idle`, and installing the service no longer touches `desired_mode` at
+  all — whatever you'd already set (or the idle default) is what it resumes.
+  Only the Enforce button, `ngd mode enforcing`, or `ngctl mode enforcing` ever
+  turns enforcement on now.
+- **Choosing "install for all users" during setup silently installed per-user
+  anyway.** `DefaultDirName` was a literal `{%USERPROFILE}\NeuralGuard`, which
+  ignores which install mode you picked. It's now `{autopf}\NeuralGuard` (Inno's
+  auto-switching Program Files constant), and the login-startup shortcut
+  switched from always-per-user to the matching auto constant too, so a
+  per-machine install actually lands per-machine.
+- Found while fixing the above: the dashboard's own startup-diagnostics log
+  (`progress.txt`) was hardcoded to `%USERPROFILE%\NeuralGuard\dashboard\`,
+  which would have silently written to a folder that doesn't exist for a
+  per-machine install — breaking the one diagnostic tool this app has for a
+  startup that fails before any window shows. It now writes next to the
+  running exe.
+
 ## [1.5.0] - 2026-07-15
 
 Stop actually stops, the service remembers what you left it in, and the four

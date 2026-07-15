@@ -78,10 +78,12 @@ const char* kSchema =
     // What the user WANTS to be running, as opposed to meta('mode'), which is what
     // IS running right now. The service reads this at startup and resumes it, so a
     // reboot honours the last decision instead of always coming up enforcing.
-    // 'enforcing' | 'learning' | 'idle'. Defaults to 'enforcing' so an upgrade
-    // can never silently leave an existing install unprotected; `ngd stop` (and
-    // the Stop button behind it) is what sets 'idle'.
-    "INSERT OR IGNORE INTO meta(k,v) VALUES('desired_mode','enforcing');"
+    // 'enforcing' | 'learning' | 'idle'. Defaults to 'idle': a database this is
+    // seeding into has never had a mode chosen for it, and nothing - not a fresh
+    // install, not installing the service for the first time - gets to decide
+    // "enforcing" on the user's behalf. Only the user's own action does: the
+    // Enforce button, `ngd mode enforcing`, or `ngctl mode enforcing`.
+    "INSERT OR IGNORE INTO meta(k,v) VALUES('desired_mode','idle');"
     // Phase 4 data foundation: one row per COMPLETED TCP flow - the metadata
     // feature vector the ML tier scores (asynchronously, off the decision
     // path). Populated by `ngd features` from GetTcpTable2 + per-connection
