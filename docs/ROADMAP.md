@@ -510,7 +510,7 @@ service is protection before/without a login. TinyWall's shape is the target.
 never own UI in the interactive desktop session — two processes (backend service +
 frontend tray/dashboard) is the real floor, not one.
 
-### Post-release fixes (found by actually using v1.5.0) ✅ DONE — shipped as v1.5.1
+### Post-release fixes (found by actually using v1.5.0/1.5.1) ✅ DONE — shipped as v1.5.1, v1.5.2
 Both found within hours, from the user installing on their physical host and
 reporting exactly what they saw — not from VM testing, which hadn't exercised
 either path.
@@ -537,6 +537,33 @@ either path.
   diagnostic tool for a startup that fails before any window shows. Now derives the
   path from the running exe's own module path (`NgDir()` already did this
   correctly; `Mark()` was the one place that hadn't been updated to match).
+- ✅ **1.5.2 — the tray icon never appeared at login, on either machine it was
+  tried on.** "Start at login" installed a Startup-folder shortcut to the
+  requireAdministrator-manifested dashboard. Windows does not reliably
+  auto-elevate a manifested-admin exe launched from the Startup folder at
+  logon — the process just doesn't get far enough to log anything, which is
+  exactly why `progress.txt` had zero "Hidden to tray" entries despite the
+  machine having been used since installing. Replaced with a **scheduled task**
+  (`schtasks /create ... /sc onlogon /rl highest`, created via `ShellExec('runas', ...)`
+  since registering an /rl highest task needs an elevated caller and Setup itself
+  might not be one) — the standard mechanism for auto-launching an elevated app
+  at logon without a UAC prompt every time, because Task Scheduler's "run with
+  highest privileges" grants elevation from the token established once at
+  registration, not via a fresh interactive consent each run.
+  - **Verified conclusively on the host** (which has a real logged-in interactive
+    user, unlike the VM at the time): registered the exact task the fixed
+    installer creates, triggered it from an *unelevated* context while polling
+    for `consent.exe` every 300ms — **never appeared** — and the resulting
+    process (a) actually launched, (b) survived an unelevated `Stop-Process`
+    attempt (access denied → genuinely elevated), and (c) reached "Hidden to
+    tray" in `progress.txt`. All from a single, silent, unattended trigger.
+  - The equivalent Startup-shortcut-based launch, tested the same way earlier,
+    had `Last Run Time` stuck at Task Scheduler's "never run" sentinel and zero
+    log entries — consistent with the process never getting past whatever gate
+    stopped it from launching at all.
+  - `[InstallDelete]` now also removes the `{autostartup}\NeuralGuard.lnk` that
+    1.5.0/1.5.1 installed, so upgrading can't leave the old (broken) shortcut
+    sitting alongside the new task.
 
 ## Phase 3 — Habit scoring & autonomy
 

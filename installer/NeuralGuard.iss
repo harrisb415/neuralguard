@@ -7,14 +7,20 @@
 ; not") - one policy database, no enterprise multi-user story - but it can
 ; still be INSTALLED either per-user or per-machine, and Inno's own
 ; admin-mode dialog (PrivilegesRequiredOverridesAllowed=dialog) offers that
-; choice. DefaultDirName/the startup shortcut use the "auto" constants
-; ({autopf}, {autostartup}) specifically so that choice is honoured - a
-; literal path like {%USERPROFILE}\NeuralGuard would ignore it and install
-; per-user regardless of what was picked, which is what used to happen here.
+; choice. DefaultDirName uses the "auto" constant ({autopf}) specifically so
+; that choice is honoured - a literal path like {%USERPROFILE}\NeuralGuard
+; would ignore it and install per-user regardless of what was picked, which
+; is what used to happen here.
 ;
 ; The dashboard's manifest requires Administrator (it commands the service
 ; over a pipe that only admits Administrators - see app.manifest), so it
-; elevates once at launch rather than per-action.
+; elevates once at launch rather than per-action. That's also why "start at
+; login" is a SCHEDULED TASK (/rl highest), not a Startup-folder shortcut:
+; Windows does not reliably auto-elevate a requireAdministrator exe launched
+; from the Startup folder at logon (observed for real - the tray never came
+; up), where a task registered with "run with highest privileges" launches
+; elevated with no interactive consent prompt, because that consent was
+; already given once, at install time, when the task was registered.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -74,17 +80,21 @@ Source: "{#SourceDir}\onnxruntime.dll"; DestDir: "{app}"; Flags: ignoreversion s
 Source: "{#SourceDir}\dashboard\*"; DestDir: "{app}\dashboard"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [InstallDelete]
-; Upgrading from <=1.4.0: remove the retired tray binary and its shortcuts, or a
+; Upgrading from <=1.4.0: remove the retired tray binary and its shortcut, or a
 ; stale ngtray.exe keeps starting at login and fights the dashboard for the icon
 ; and the prompt pipe.
 Type: files; Name: "{app}\ngtray.exe"
 Type: files; Name: "{userstartup}\NeuralGuard.lnk"
+; Upgrading from 1.5.0/1.5.1: those shipped "start at login" as an {autostartup}
+; shortcut - the one this version replaces with a scheduled task (see [Code]),
+; because the shortcut doesn't reliably auto-elevate. Remove it so it can't sit
+; alongside the new task and either double-launch or (mostly) just silently fail
+; forever, unnoticed, exactly as it did before this fix.
+Type: files; Name: "{autostartup}\NeuralGuard.lnk"
 
 [Icons]
-; One entry, one frontend. --tray starts it as just an icon, no window.
 Name: "{group}\NeuralGuard"; Filename: "{app}\dashboard\NeuralGuard.exe"
 Name: "{group}\Uninstall NeuralGuard"; Filename: "{uninstallexe}"
-Name: "{autostartup}\NeuralGuard"; Filename: "{app}\dashboard\NeuralGuard.exe"; Parameters: "--tray"; Tasks: startup
 
 [Run]
 ; The dashboard's manifest requires Administrator (it commands the service over a
@@ -117,10 +127,42 @@ begin
     '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
+// "Start at login" as a SCHEDULED TASK, not a Startup-folder shortcut. The
+// dashboard's manifest requires Administrator, and a plain shortcut to an
+// elevated exe in the Startup folder does not reliably auto-elevate at logon -
+// this was shipped in 1.5.0/1.5.1 and the tray simply never appeared, silently,
+// with nothing logged (the process never got far enough to log anything). A
+// task registered with "run with highest privileges" (/rl highest) launches
+// elevated with NO interactive consent prompt at logon: the consent is
+// effectively given once, right now, by the person running this (elevated, for
+// a per-machine install) or already-elevated-equivalent Setup - not on every
+// login. /F overwrites a same-named task, so re-running install is idempotent.
+procedure InstallStartupTask;
+var
+  ResultCode: Integer;
+  exePath, taskParams: String;
+begin
+  exePath := ExpandConstant('{app}\dashboard\NeuralGuard.exe');
+  // schtasks' /tr wants ONE token; since exePath itself contains spaces and an
+  // argument, it's wrapped in its own (escaped) quotes - the standard schtasks
+  // pattern for a quoted inner command.
+  taskParams := '/create /tn "NeuralGuard" /tr "\"' + exePath + '\" --tray"' +
+    ' /sc onlogon /rl highest /f';
+  // 'runas': registering an /rl highest task needs an elevated caller, and
+  // PrivilegesRequired=lowest means Setup itself might not be one (the "just me"
+  // choice). Matches how StopNeuralGuard elevates individually rather than
+  // requiring the whole installer to run as admin. If Setup is ALREADY elevated
+  // (the "for all users" choice), this doesn't add a second prompt.
+  ShellExec('runas', ExpandConstant('{sys}\schtasks.exe'), taskParams, '',
+    SW_HIDE, ewWaitUntilTerminated, ResultCode);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssInstall then
     StopNeuralGuard;   // best-effort; CloseApplications/restart-manager covers the rest
+  if (CurStep = ssPostInstall) and WizardIsTaskSelected('startup') then
+    InstallStartupTask;
 end;
 
 // Best-effort cleanup on uninstall: remove the background service and clear
@@ -147,6 +189,11 @@ begin
         'approve them. If you decline, a hidden service can be left running and ' +
         'still filtering your traffic, with the tools to stop it already deleted.',
         mbInformation, MB_OK);
+
+    // Not gated on success/failure - a missing task just makes schtasks return
+    // a nonzero code, which nothing here depends on.
+    ShellExec('runas', ExpandConstant('{sys}\schtasks.exe'), '/delete /tn "NeuralGuard" /f',
+      '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 
     okStop := StopNeuralGuard;   // SCM stop, never a kill - see StopNeuralGuard
     okSvc := ShellExec('runas', ExpandConstant('{app}\ngd.exe'), 'uninstall',

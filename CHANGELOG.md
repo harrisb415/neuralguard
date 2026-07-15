@@ -5,6 +5,24 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.2] - 2026-07-15
+
+### Fixed
+
+- **The tray icon didn't appear at login.** "Start NeuralGuard when I log in"
+  installed a Startup-folder shortcut, and a plain shortcut to a
+  requireAdministrator-manifested exe doesn't reliably auto-elevate when Windows
+  processes the Startup folder at logon — the process either doesn't launch or
+  never gets past that, with nothing logged, because it never runs far enough to
+  log anything. Replaced with a **scheduled task** registered with "run with
+  highest privileges" and a logon trigger — the standard, documented way to
+  auto-launch an elevated app at login without a UAC prompt every time (the
+  consent is effectively given once, when the task is registered, not on every
+  login). Verified end to end: triggering the task launches the dashboard fully
+  elevated, hidden to tray, with zero consent-dialog appearance. Upgrading from
+  1.5.0/1.5.1 removes their old Startup-folder shortcut so it can't sit alongside
+  the new task.
+
 ## [1.5.1] - 2026-07-15
 
 Two bugs found within hours of shipping 1.5.0 by actually using it on a real
