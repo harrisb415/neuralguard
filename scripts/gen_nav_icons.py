@@ -53,6 +53,12 @@ ICONS = {
     "feedback": [  # speech bubble: rounded rect + tail
         rect_points(3, 3, 18, 13), [(7, 16), (13, 16), (7, 21)],
     ],
+    # inbound: an arrow entering a wall ("->|") = traffic arriving at this machine.
+    "inbound": [
+        rect_points(19, 3, 3, 18),                 # the wall (your machine)
+        rect_points(2, 10.5, 9, 3),                # shaft
+        [(10, 6.5), (17, 12), (10, 17.5)],         # arrowhead pointing in
+    ],
     # Page with a folded corner (classic "document" motif) - a single big
     # dog-ear notch survives small-size rendering far better than thin text
     # lines, which turned out to be sub-pixel and vanished at 16px.
@@ -67,7 +73,8 @@ ICONS = {
     ],
 }
 
-ORDER = ["live", "rules", "habits", "apps", "history", "flows", "flags", "baseline", "feedback", "digest", "settings"]
+ORDER = ["live", "rules", "habits", "apps", "history", "flows", "flags", "baseline", "inbound",
+         "feedback", "digest", "settings"]
 
 # Icons whose extra subpaths are holes cut from an earlier one (evenodd / "F0")
 # rather than additional solid shapes merged in (nonzero / "F1", the default -

@@ -47,6 +47,7 @@ namespace winrt::NeuralGuard::implementation
         void DemoteApp(winrt::hstring const& appPath, int port, int proto);   // Phase 4d: manual distrust
         void RetrustApp(winrt::hstring const& appPath, int port, int proto);  // remove a demote flag
         void RemoveFlag(int64_t id);                               // delete one ml_flags row
+        void SetInboundAllowed(int64_t id, bool allowed);          // permit/revoke a blocked inbound service
         void ClearMlFlags();                                       // delete all ml_flags
         void BuildDigest();                                        // Phase 4f: fill DigestText
         HWND WindowHandle();

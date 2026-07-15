@@ -56,3 +56,4 @@ desktop.ini
 __pycache__/
 *.pyc
 .venv*/
+/scratchpad_nav_icons.png

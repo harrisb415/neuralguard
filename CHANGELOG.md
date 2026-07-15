@@ -5,6 +5,60 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.4.0] - 2026-07-14
+
+Full-coverage enforcement: **both directions, both IP versions**, with direction
+read from the WFP layer instead of guessed from port numbers.
+
+### Added
+
+- **IPv6 enforcement.** Outbound IPv6 was previously *completely unfiltered* —
+  a default-deny that only covered IPv4 left every IPv6 destination open. The
+  outbound path is now mirrored onto `ALE_AUTH_CONNECT_V6`, with IPv6 Tier-0
+  exemptions (`::1`, `fe80::/10`, `fc00::/7`, and `ff00::/8` multicast — Neighbor
+  Discovery and MLD run over those, and IPv6 stops working entirely without them).
+  Baseline and user app-permits install at both layers, so a permitted app keeps
+  working over IPv6 instead of being wrongly blocked.
+- **Inbound enforcement (opt-in).** New default-deny at `ALE_AUTH_RECV_ACCEPT_V4/V6`
+  guarding your *listening services*, off by default (`ngd inbound [on|off]`) so an
+  upgrade can never silently start blocking them. Anti-lockout is structural: SSH
+  (22), RDP (3389), DHCP/DHCPv6, loopback and link-local are permitted *before* the
+  catch-all, so no baseline, rule, or ML demotion can cut off your management
+  channel. Inbound default-deny only affects *new* inbound accepts — the return
+  traffic of connections you initiated is never re-classified, so browsing is
+  untouched.
+- **`ngd inbound`** — previews the mode, the inbound services that would be
+  permitted, and the services we blocked pending your review. `ngd inbound allow
+  <port>` permits one, live.
+- **Inbound review in the dashboard** — a new **Inbound** view lists blocked
+  inbound services (port, attempts, last peer); right-click to allow or re-block.
+- Inbound connections are now **learned** (direction-aware habits) regardless of
+  whether inbound enforcement is on, so the baseline is ready before you enable it.
+
+### Changed
+
+- **Direction is now a fact, not a guess.** Learning used to infer inbound vs
+  outbound from `remotePort < 49152` — a heuristic that wrongly excluded outbound
+  connections to high remote ports (P2P, some game/QUIC services) and wrongly
+  included inbound connections from low source ports. Direction now comes from the
+  ALE layer the event was classified at, which *is* the direction. The heuristic is
+  deleted. `habits` and `flow_events` gained a `direction` column.
+- **Inbound is never prompted, by design.** A remote party must never be able to
+  put a dialog on your screen, and the decision you actually want is per *service*,
+  not per connection. Novel inbound is blocked silently, recorded, and the tray
+  balloons **once** per new service; you review and allow at your leisure. See
+  `docs/DECISIONS.md` (D-5…D-8) for the full coverage model and its honest limits.
+
+### Fixed
+
+- **Live rule edits silently disabled inbound enforcement.** `reapply()` cleared
+  every filter — inbound included — then rebuilt only the outbound half, failing
+  inbound open. It now rebuilds both.
+- ICMP was *investigated* rather than assumed: it turns out WFP's ALE layers
+  already classify it, so outbound ICMP was already covered and no transport-layer
+  filters were needed. Adding them would have broken Path MTU Discovery and IPv6
+  Neighbor Discovery — see D-7.
+
 ## [1.3.1] - 2026-07-13
 
 ### Added

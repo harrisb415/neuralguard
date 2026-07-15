@@ -370,6 +370,25 @@ namespace winrt::NeuralGuard::implementation
                                    U8(ng::Db::ColText(s, 4)), U8(ng::Db::ColText(s, 5)) } });
             });
         }
+        else if (curView_ == L"inbound")
+        {
+            // Inbound services WE blocked, for passive review. Inbound is never
+            // prompted (a remote party must not be able to pop a dialog), so this
+            // list is where the tray balloon sends you: right-click to allow.
+            // C0 is the state, which TplGeneric renders as a pill - "blocked" hits
+            // the Block palette (red), "ALLOWED" the Allow palette (green).
+            SetHeaders(L"State", L"Port", L"Attempts", L"Application", L"Last peer");
+            if (ok) d.each("SELECT id, allowed, local_port, attempts,"
+                           " COALESCE(NULLIF(process_label,''), app_path), COALESCE(last_peer,'')"
+                           " FROM inbound_blocked ORDER BY allowed, attempts DESC LIMIT 500;",
+                           [&](sqlite3_stmt* s) {
+                rows.push_back({ sqlite3_column_int64(s, 0),
+                                 { sqlite3_column_int(s, 1) ? hstring{ L"ALLOWED" } : hstring{ L"blocked" },
+                                   to_hstring(sqlite3_column_int(s, 2)),
+                                   to_hstring(sqlite3_column_int(s, 3)),
+                                   U8(ng::Db::ColText(s, 4)), U8(ng::Db::ColText(s, 5)) } });
+            });
+        }
         else if (curView_ == L"feedback")
         {
             // Phase 4e: prompt verdicts as training labels (read-only view).
@@ -484,6 +503,7 @@ namespace winrt::NeuralGuard::implementation
         else if (tag == L"flows") title = L"Flows";
         else if (tag == L"flags") title = L"Flags";
         else if (tag == L"baseline") title = L"Baseline";
+        else if (tag == L"inbound") title = L"Inbound";
         else if (tag == L"feedback") title = L"Feedback";
         else if (tag == L"digest") title = L"Digest";
         else if (tag == L"settings") title = L"Settings";
@@ -526,6 +546,7 @@ namespace winrt::NeuralGuard::implementation
             else if (tag == L"apps")                 SetCols(120, 110, 100, -1, 0);
             else if (tag == L"flows")                SetCols(120, -1, 230, 110, 110);
             else if (tag == L"rules")                SetCols(120, 90, 120, -1, 0);
+            else if (tag == L"inbound")              SetCols(110, 80, 90, -1, 150);
             else if (tag == L"habits")               SetCols(110, 90, -1, 260, 0);
             else                                     SetCols(130, 128, -1, 210, 84);
 
@@ -764,7 +785,7 @@ namespace winrt::NeuralGuard::implementation
     void MainWindow::OnClearFlags(IInspectable const&, RoutedEventArgs const&)
     {
         ClearMlFlags();
-        if (curView_ == L"flags" || curView_ == L"baseline") RefreshCurrent();
+        if (curView_ == L"flags" || curView_ == L"baseline" || curView_ == L"inbound") RefreshCurrent();
     }
 
     void MainWindow::OnExportFeedback(IInspectable const&, RoutedEventArgs const&)
@@ -923,6 +944,24 @@ namespace winrt::NeuralGuard::implementation
         sqlite3_step(s); sqlite3_finalize(s);
         sqlite3_exec(d.handle(), "UPDATE meta SET v=CAST(v AS INTEGER)+1 WHERE k='rules_gen';", nullptr, nullptr, nullptr);
         Notify(L"Flag removed.", InfoBarSeverity::Success);
+    }
+
+    // Permit (or revoke) an inbound service from the blocked-inbound review list.
+    // Bumping rules_gen makes a running enforce daemon re-apply, which rebuilds the
+    // inbound baseline including this row - so it takes effect without a restart.
+    void MainWindow::SetInboundAllowed(int64_t id, bool allowed)
+    {
+        ng::Db d;
+        if (!d.open(DbPathU8().c_str())) return;
+        sqlite3_stmt* s = nullptr;
+        sqlite3_prepare_v2(d.handle(), "UPDATE inbound_blocked SET allowed=? WHERE id=?;", -1, &s, nullptr);
+        sqlite3_bind_int(s, 1, allowed ? 1 : 0);
+        sqlite3_bind_int64(s, 2, id);
+        sqlite3_step(s); sqlite3_finalize(s);
+        sqlite3_exec(d.handle(), "UPDATE meta SET v=CAST(v AS INTEGER)+1 WHERE k='rules_gen';", nullptr, nullptr, nullptr);
+        Notify(allowed ? L"Inbound service allowed (applies live)."
+                       : L"Inbound service blocked again (applies live).",
+               InfoBarSeverity::Success);
     }
 
     void MainWindow::ClearMlFlags()
@@ -1120,6 +1159,16 @@ namespace winrt::NeuralGuard::implementation
             add(L"Allow this destination", [this, id] { AddRuleFromEvent(id, false, false, 0); });
             add(L"Allow this destination for 1 hour", [this, id] { AddRuleFromEvent(id, false, false, 3600); });
             add(L"Allow this app (any port)", [this, id] { AddRuleFromEvent(id, false, true, 0); });
+        }
+        else if (curView_ == L"inbound")
+        {
+            int64_t id = ctxRow_.Id();
+            if (id == 0) return;
+            const bool allowed = (ctxRow_.C0() == L"ALLOWED");
+            if (allowed)
+                add(L"Block this service again", [this, id] { SetInboundAllowed(id, false); RefreshCurrent(); });
+            else
+                add(L"Allow this service", [this, id] { SetInboundAllowed(id, true); RefreshCurrent(); });
         }
         else if (curView_ == L"baseline")
         {

@@ -1,6 +1,6 @@
 # NeuralGuard
 
-**v1.3.1** — A personal, habit-learning firewall for Windows 11 — built the
+**v1.4.0** — A personal, habit-learning firewall for Windows 11 — built the
 buildable way. Now with an on-device machine-learning tier that scores your
 connections in the background (shadow by default, never enforces on its own).
 
@@ -12,12 +12,15 @@ NeuralGuard watches how *you* use the network, learns your normal, and quietly
 blocks the stuff that doesn't fit. It is designed to be built and run by one
 person on their own machine, not by a team shipping a signed kernel product.
 
-> **Status:** Phases 0–2 done, most of Phase 3 too — recording, habit
-> learning, enforcement with block-notify-retry prompts, a background
-> Windows service, and a WinUI 3 control dashboard (`gui/`) are all working
-> end to end. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's left
-> (ML scoring, the optional kernel driver) and [`CHANGELOG.md`](CHANGELOG.md)
-> for what shipped in each release.
+> **Status:** Phases 0–4 done — recording, habit learning, enforcement with
+> block-notify-retry prompts, a background Windows service, the on-device ML
+> tier (shadow by default), a WinUI 3 dashboard (`gui/`), and an in-app
+> updater are all working end to end. Enforcement now covers **both directions
+> and both IP versions**, with direction read from the WFP layer rather than
+> guessed. Inbound enforcement is **opt-in** (`ngd inbound`). What's left is the
+> *optional* Phase 5 kernel callout driver — see
+> [`docs/ROADMAP.md`](docs/ROADMAP.md), [`docs/DECISIONS.md`](docs/DECISIONS.md)
+> for the coverage model, and [`CHANGELOG.md`](CHANGELOG.md) for each release.
 
 ---
 
