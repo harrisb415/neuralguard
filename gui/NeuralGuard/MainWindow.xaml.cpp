@@ -103,6 +103,11 @@ namespace winrt::NeuralGuard::implementation
 
         colW_ = Application::Current().Resources().Lookup(box_value(L"ColW")).as<NeuralGuard::ColWidths>();
 
+        // Apply the persisted theme before first paint. Defaults to dark - the
+        // designed look - so nothing changes for anyone who never touches the
+        // setting; App.xaml no longer forces Dark app-wide (see the note there).
+        ApplyTheme(MetaGet("theme", "dark"));
+
         StartTray();
 
         timer_ = DispatcherTimer{};
@@ -853,6 +858,10 @@ namespace winrt::NeuralGuard::implementation
     void MainWindow::LoadSettings()
     {
         loadingSettings_ = true;   // syncing the controls must not write back / toast
+        std::string theme = MetaGet("theme", "dark");
+        Theme0().IsChecked(theme == "dark");
+        Theme1().IsChecked(theme == "light");
+        Theme2().IsChecked(theme == "system");
         int a = ReadAutonomy();
         Auto0().IsChecked(a == 0);
         Auto1().IsChecked(a == 1);
@@ -937,6 +946,30 @@ namespace winrt::NeuralGuard::implementation
         Notify(on ? L"Flow feature collection ON — applies next time enforcement or learning runs."
                   : L"Flow feature collection OFF.", InfoBarSeverity::Success);
     }
+    // Theme goes on the root FrameworkElement, not the Application: an app-level
+    // RequestedTheme is fixed for the process lifetime, while an element-level one
+    // can change live. ElementTheme::Default means "inherit from the app", and the
+    // app no longer forces Dark, so Default = follow the Windows setting - which
+    // is also what makes the 'system' option track an OS theme change without any
+    // listener of our own.
+    void MainWindow::ApplyTheme(std::string const& theme)
+    {
+        auto root = Content().try_as<FrameworkElement>();
+        if (!root) return;
+        root.RequestedTheme(theme == "light"  ? ElementTheme::Light
+                          : theme == "system" ? ElementTheme::Default
+                                              : ElementTheme::Dark);
+    }
+
+    void MainWindow::OnThemeChanged(IInspectable const& sender, RoutedEventArgs const&)
+    {
+        if (loadingSettings_) return;
+        auto fe = sender.try_as<FrameworkElement>();
+        std::string theme = fe ? to_string(unbox_value_or<hstring>(fe.Tag(), L"dark")) : "dark";
+        MetaSet("theme", theme.c_str());
+        ApplyTheme(theme);
+    }
+
     void MainWindow::OnMlModeChanged(IInspectable const& sender, RoutedEventArgs const&)
     {
         if (loadingSettings_) return;

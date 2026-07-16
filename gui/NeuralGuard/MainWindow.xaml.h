@@ -36,6 +36,7 @@ namespace winrt::NeuralGuard::implementation
         void OnImportRules(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnFeatureToggle(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnMlModeChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnThemeChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
         void OnMlThresholdChanged(winrt::Microsoft::UI::Xaml::Controls::NumberBox const&,
                                   winrt::Microsoft::UI::Xaml::Controls::NumberBoxValueChangedEventArgs const&);
         void OnClearFlags(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
@@ -64,6 +65,7 @@ namespace winrt::NeuralGuard::implementation
         void BuildDigest();                                        // Phase 4f: fill DigestText
         HWND WindowHandle();
         void LoadSettings();
+        void ApplyTheme(std::string const& theme);   // 'dark' | 'light' | 'system' -> root RequestedTheme
         void RefreshServiceStatus();
         int  ReadAutonomy();
         void WriteAutonomy(int level);

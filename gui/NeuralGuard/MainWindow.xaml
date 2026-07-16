@@ -344,7 +344,21 @@
                 <ScrollViewer Grid.Row="1" x:Name="SettingsPanel" Visibility="Collapsed"
                               VerticalScrollBarVisibility="Auto">
                     <StackPanel MaxWidth="920" HorizontalAlignment="Left" Margin="0,2,0,30">
-                        <TextBlock Text="AUTONOMY" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,2,0,10"/>
+                        <TextBlock Text="APPEARANCE" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,2,0,10"/>
+                        <Border Style="{StaticResource NG.Card}">
+                            <StackPanel>
+                                <TextBlock Text="Dark is the designed look. Light mode is being built out - parts of the app may not have adapted yet."
+                                           Style="{StaticResource NG.Text.Secondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
+                                <RadioButton x:Name="Theme0" Tag="dark" GroupName="apptheme" Checked="OnThemeChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Dark"/>
+                                <RadioButton x:Name="Theme1" Tag="light" GroupName="apptheme" Checked="OnThemeChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Light"/>
+                                <RadioButton x:Name="Theme2" Tag="system" GroupName="apptheme" Checked="OnThemeChanged"
+                                             Style="{StaticResource NG.RadioButton}" Content="Match Windows"/>
+                            </StackPanel>
+                        </Border>
+
+                        <TextBlock Text="AUTONOMY" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,26,0,10"/>
                         <Border Style="{StaticResource NG.Card}">
                             <StackPanel>
                                 <TextBlock Text="What NeuralGuard does when an app makes a new outbound connection while enforcing."
