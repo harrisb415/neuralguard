@@ -1,6 +1,6 @@
 # NeuralGuard
 
-**v1.5.3** — A personal, habit-learning firewall for Windows 11 — built the
+**v1.5.4** — A personal, habit-learning firewall for Windows 11 — built the
 buildable way. Now with an on-device machine-learning tier that scores your
 connections in the background (shadow by default, never enforces on its own).
 

@@ -510,7 +510,7 @@ service is protection before/without a login. TinyWall's shape is the target.
 never own UI in the interactive desktop session — two processes (backend service +
 frontend tray/dashboard) is the real floor, not one.
 
-### Post-release fixes (found by actually using v1.5.0/1.5.1/1.5.2) ✅ DONE — shipped as v1.5.1, v1.5.2, v1.5.3
+### Post-release fixes (found by actually using v1.5.0/1.5.1/1.5.2/1.5.3) ✅ DONE — shipped as v1.5.1, v1.5.2, v1.5.3, v1.5.4
 Both found within hours, from the user installing on their physical host and
 reporting exactly what they saw — not from VM testing, which hadn't exercised
 either path.
@@ -628,6 +628,21 @@ either path.
     of the running window came back solid black despite a valid, visible,
     non-minimized window rect - the same restriction that blocks driving Task
     Manager or a UAC prompt).
+- ✅ **1.5.4 — the in-app updater never confirmed completion or relaunched.**
+  `OnInstallUpdate` downloads, calls `Updater::apply()` (launches
+  `Setup.exe /VERYSILENT /NORESTART /SUPPRESSMSGBOXES` via `ShellExecuteExW`),
+  shows "closing to finish updating," waits 1.5s, then exits the dashboard so
+  the installer can overwrite its files - all of which worked correctly (a
+  manual restart always showed the update had actually landed). The gap was
+  entirely on the other side: the installer's own `[Run]` "Launch NeuralGuard
+  now" entry had `skipifsilent`, so it explicitly did NOT fire during a
+  `/VERYSILENT` run. `updater.cpp` is the ONLY caller that ever installs
+  silently (confirmed by grep across `src/`, `scripts/`, `installer/`), and it
+  does so specifically because it's completing an update the user asked for
+  in-app - `skipifsilent` was exactly backwards for that one caller. Removed;
+  no `--tray` argument on that Run entry either, since the user is actively at
+  the app when this fires and the window reappearing IS the confirmation - no
+  separate "update succeeded" message needed.
 
 ## Phase 3 — Habit scoring & autonomy
 

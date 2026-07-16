@@ -5,6 +5,22 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.5.4] - 2026-07-15
+
+### Fixed
+
+- **The in-app updater never confirmed completion or came back afterward.**
+  Clicking "Install Update" downloaded the new version, installed it silently,
+  and told you NeuralGuard would close — which it did, correctly, so the
+  installer could replace its own files. But nothing ever relaunched it: the
+  installer's own "start the app when done" step was explicitly configured to
+  skip itself during silent installs, which is exactly the wrong default for
+  an update the *installer itself* is running silently on the user's behalf.
+  A manual restart always showed the update had actually succeeded — the
+  install itself was never the problem, only the silence afterward. NeuralGuard
+  now relaunches on its own once an in-app update finishes, which is also the
+  confirmation: no separate message, the app just comes back.
+
 ## [1.5.3] - 2026-07-15
 
 ### Fixed

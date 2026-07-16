@@ -102,7 +102,15 @@ Name: "{group}\Uninstall NeuralGuard"; Filename: "{uninstallexe}"
 ; default, which can't elevate a manifested-admin target ("CreateProcess failed;
 ; code 740" = ERROR_ELEVATION_REQUIRED). shellexec routes it through ShellExecute,
 ; which Windows elevates normally - the same path Start Menu shortcuts already use.
-Filename: "{app}\dashboard\NeuralGuard.exe"; Description: "Launch NeuralGuard now"; Flags: nowait postinstall skipifsilent shellexec
+;
+; Deliberately NOT skipifsilent. The in-app updater (core/updater.cpp) is the
+; ONLY caller that ever runs this installer silently (/VERYSILENT), and it does
+; so specifically BECAUSE the user just clicked "install update" - the whole
+; point is to come back up on its own afterward. skipifsilent here meant the
+; dashboard exited to let the silent install proceed, the install itself
+; finished correctly, and then nothing happened: no confirmation, no restart,
+; the app just gone until the user noticed and relaunched it by hand.
+Filename: "{app}\dashboard\NeuralGuard.exe"; Description: "Launch NeuralGuard now"; Flags: nowait postinstall shellexec
 
 [Code]
 // Stop a previous install before touching its files. The background service must
