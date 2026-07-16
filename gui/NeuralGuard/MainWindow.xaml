@@ -167,7 +167,7 @@
                                 <ColumnDefinition Width="240"/><ColumnDefinition Width="320"/>
                                 <ColumnDefinition Width="90"/>
                             </Grid.ColumnDefinitions>
-                            <Border Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="11" BorderThickness="0" Padding="12,4" Margin="0,0,8,0"
+                            <Border Grid.Column="0" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="{ThemeResource NG.Corner.Pill}" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
                                     Background="{x:Bind C0Bg}" BorderBrush="{x:Bind C0Bd}">
                                 <TextBlock Text="{x:Bind C0}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
                                            Foreground="{x:Bind C0Fg}"/></Border>
@@ -186,7 +186,7 @@
                                 <ColumnDefinition Width="90"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                            <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="11" BorderThickness="0" Padding="12,4" Margin="0,0,8,0"
+                            <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="{ThemeResource NG.Corner.Pill}" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
                                     Background="{x:Bind C1Bg}" BorderBrush="{x:Bind C1Bd}">
                                 <TextBlock Text="{x:Bind C1}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
                                            Foreground="{x:Bind C1Fg}"/></Border>
@@ -205,7 +205,7 @@
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
                             <TextBlock Grid.Column="1" Text="{x:Bind C1}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                            <Border Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="11" BorderThickness="0" Padding="12,4" Margin="0,0,8,0"
+                            <Border Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="{ThemeResource NG.Corner.Pill}" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
                                     Background="{x:Bind C2Bg}" BorderBrush="{x:Bind C2Bd}">
                                 <TextBlock Text="{x:Bind C2}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
                                            Foreground="{x:Bind C2Fg}"/></Border>
@@ -222,11 +222,11 @@
                                 <ColumnDefinition Width="90"/>
                             </Grid.ColumnDefinitions>
                             <TextBlock Grid.Column="0" Text="{x:Bind C0}" TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
-                            <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="11" BorderThickness="0" Padding="12,4" Margin="0,0,8,0"
+                            <Border Grid.Column="1" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="{ThemeResource NG.Corner.Pill}" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
                                     Background="{x:Bind C1Bg}" BorderBrush="{x:Bind C1Bd}">
                                 <TextBlock Text="{x:Bind C1}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
                                            Foreground="{x:Bind C1Fg}"/></Border>
-                            <Border Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="11" BorderThickness="0" Padding="12,4" Margin="0,0,8,0"
+                            <Border Grid.Column="2" HorizontalAlignment="Left" VerticalAlignment="Center" CornerRadius="{ThemeResource NG.Corner.Pill}" BorderThickness="1" Padding="11,4" Margin="0,0,8,0"
                                     Background="{x:Bind C2Bg}" BorderBrush="{x:Bind C2Bd}">
                                 <TextBlock Text="{x:Bind C2}" FontFamily="Consolas" FontSize="11" FontWeight="Bold" CharacterSpacing="60"
                                            Foreground="{x:Bind C2Fg}"/></Border>

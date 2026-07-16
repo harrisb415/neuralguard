@@ -95,6 +95,11 @@
             <SolidColorBrush x:Key="NG.Brush.Verdict.Monitor.BG"   Color="#22FFAA00"/>
             <SolidColorBrush x:Key="NG.Brush.Verdict.Permitted.BG" Color="#2200FF88"/>
 
+            <!-- Badge radius. Themed because the two pill styles want different
+                 shapes: dark's neon outline badge is the original soft rectangle,
+                 light's solid badge is fully rounded (see Row.cpp's PillBrushes). -->
+            <CornerRadius x:Key="NG.Corner.Pill">6</CornerRadius>
+
             <!-- Acrylic -->
             <AcrylicBrush x:Key="NG.Brush.Acrylic.Sidebar"
                 TintColor="#FF12141A" TintOpacity="0.90" FallbackColor="#FF12141A"/>
@@ -191,6 +196,9 @@
             <SolidColorBrush x:Key="NG.Brush.Verdict.Block.BG"     Color="#1FC00030"/>
             <SolidColorBrush x:Key="NG.Brush.Verdict.Monitor.BG"   Color="#1F9A5B00"/>
             <SolidColorBrush x:Key="NG.Brush.Verdict.Permitted.BG" Color="#1F00703C"/>
+
+            <!-- Fully rounded: light's badges are solid fills, which read as pills. -->
+            <CornerRadius x:Key="NG.Corner.Pill">11</CornerRadius>
 
             <!-- Acrylic -->
             <AcrylicBrush x:Key="NG.Brush.Acrylic.Sidebar"

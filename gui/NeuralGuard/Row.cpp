@@ -25,11 +25,28 @@ namespace winrt::NeuralGuard::implementation
     void Row::SetLightTheme(bool light) { g_light = light; }
 
     // --- Pills -------------------------------------------------------------
-    // Solid saturated fill + white text, rather than the previous dim tint +
-    // neon text + matching border. The old style was tuned for a black
-    // background and washed out badly on white; a solid fill carries its own
-    // contrast, so ONE palette now reads correctly in both themes and the pills
-    // no longer depend on the theme at all.
+    // The two themes use genuinely different pill styles, because what makes a
+    // badge readable differs with the background:
+    //
+    //   Dark  - the original neon look: dim tint fill, bright neon text, matching
+    //           border. Neon glows against near-black; this is the designed look.
+    //   Light - solid saturated fill, white text, no border. The neon style washes
+    //           out on white (neon green text on a 13%-alpha tint is barely
+    //           legible), so light carries its contrast in the fill instead.
+    //
+    // Same semantics either way - green=allow, blue/cyan=capallow, red=block,
+    // orange=warning, yellow=monitor - so a verdict reads the same in both.
+    static Brush NeonGreen()  { return Argb(0xFF, 0x00, 0xFF, 0x88); }
+    static Brush NeonCyan()   { return Argb(0xFF, 0x00, 0xE5, 0xFF); }
+    static Brush NeonRed()    { return Argb(0xFF, 0xFF, 0x33, 0x66); }
+    static Brush NeonOrange() { return Argb(0xFF, 0xFF, 0x8A, 0x3D); }
+    static Brush NeonAmber()  { return Argb(0xFF, 0xFF, 0xAA, 0x00); }
+    static Brush Dim(Brush const& b)   // same hue as the neon, at tint alpha
+    {
+        auto c = b.as<SolidColorBrush>().Color();
+        return Argb(0x22, c.R, c.G, c.B);
+    }
+
     static Brush PillGreen()  { return Argb(0xFF, 0x24, 0xB3, 0x57); }  // allow / permitted / benign
     static Brush PillBlue()   { return Argb(0xFF, 0x1E, 0x9C, 0xF0); }  // capallow
     static Brush PillRed()    { return Argb(0xFF, 0xE1, 0x20, 0x2D); }  // drop / block
@@ -66,14 +83,34 @@ namespace winrt::NeuralGuard::implementation
         return 0;
     }
 
-    // Pill fg/bg/border for one cell. Border matches the fill so the badge reads
-    // as one solid shape. Non-token cells: plain text fg, transparent fill, so
-    // the badge disappears and the text just reads normally.
+    // Pill fg/bg/border for one cell.
+    //   Light: border matches the fill, so the badge reads as one solid shape.
+    //   Dark:  neon text on a dim tint of the same hue, with a neon border.
+    // Non-token cells: plain text fg, transparent fill, so the badge disappears
+    // and the text just reads normally.
     static void PillBrushes(hstring const& text, Brush& fg, Brush& bg, Brush& bd)
     {
         std::wstring upper{ text };
         for (auto& c : upper) c = (wchar_t)std::towupper((wint_t)c);
-        switch (KeyFor(upper))
+        const int key = KeyFor(upper);
+
+        if (!g_light)   // dark: the original neon badges
+        {
+            Brush neon{ nullptr };
+            switch (key)
+            {
+            case 1: neon = NeonGreen();  break;
+            case 2: neon = NeonCyan();   break;
+            case 3: neon = NeonRed();    break;
+            case 4: neon = NeonAmber();  break;
+            case 5: neon = NeonOrange(); break;
+            default: fg = TextPrimary(); bg = Clear(); bd = Clear(); return;
+            }
+            fg = neon; bg = Dim(neon); bd = neon;
+            return;
+        }
+
+        switch (key)   // light: solid badges
         {
         case 1: fg = OnPill();   bg = PillGreen();  bd = PillGreen();  return;
         case 2: fg = OnPill();   bg = PillBlue();   bd = PillBlue();   return;
