@@ -394,11 +394,27 @@ namespace winrt::NeuralGuard::implementation
         else if (curView_ == L"apps")
         {
             SetHeaders(L"Events", L"Blocked", L"Dests", L"Application", L"");
-            if (ok) d.each("SELECT COALESCE(pi.signer,pi.image_path,fe.image_path) app,"
-                           " COUNT(DISTINCT fe.remote_addr), COUNT(*),"
-                           " SUM(CASE WHEN fe.verdict LIKE '%DROP%' OR fe.verdict='BLOCK' THEN 1 ELSE 0 END)"
-                           " FROM flow_events fe LEFT JOIN process_identity pi ON fe.image_id=pi.id"
-                           " GROUP BY app ORDER BY COUNT(*) DESC LIMIT 500;", [&](sqlite3_stmt* s) {
+            // Reads the app_stats/app_dests rollup the daemon maintains, not the
+            // raw flow_events - so this is O(#apps + #distinct-dests) and stays
+            // fast no matter how large the event log grows. Same columns as before
+            // (signer-grouped, distinct destinations). events/blocked and the
+            // distinct-dest count are aggregated in SEPARATE CTEs and joined on the
+            // app label - joining app_stats to app_dests directly would fan the
+            // one-to-many out and multiply events by each app's dest count.
+            // Unattributed (no image_id) events aren't apps and don't appear here
+            // (they're still in Live).
+            if (ok) d.each(
+                "WITH stats AS ("
+                "  SELECT COALESCE(pi.signer, pi.image_path, '(unknown)') app,"
+                "         SUM(s.events) ev, SUM(s.blocked) bl"
+                "  FROM app_stats s LEFT JOIN process_identity pi ON s.image_id = pi.id GROUP BY app),"
+                " dests AS ("
+                "  SELECT COALESCE(pi.signer, pi.image_path, '(unknown)') app,"
+                "         COUNT(DISTINCT ad.remote_addr) dests"
+                "  FROM app_dests ad LEFT JOIN process_identity pi ON ad.image_id = pi.id GROUP BY app)"
+                " SELECT stats.app, COALESCE(dests.dests,0), stats.ev, stats.bl"
+                " FROM stats LEFT JOIN dests ON stats.app = dests.app"
+                " ORDER BY stats.ev DESC LIMIT 500;", [&](sqlite3_stmt* s) {
                 rows.push_back({ 0, { to_hstring(sqlite3_column_int(s, 2)), to_hstring(sqlite3_column_int(s, 3)),
                                       to_hstring(sqlite3_column_int(s, 1)), U8(ng::Db::ColText(s, 0)), L"" } });
             });

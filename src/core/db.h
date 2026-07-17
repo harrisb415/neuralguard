@@ -45,6 +45,15 @@ public:
     // exposed via `ngd events purge`.
     long long purgeFlowEvents(int days);
 
+    // Per-app rollup (see app_stats/app_dests in the schema).
+    // recordAppStat folds one just-logged event into the rollup - CALLER MUST
+    // HOLD mutex() (it runs in the recorder's insert critical section, so it does
+    // not lock itself). imageId < 0 (unattributed) is ignored.
+    void recordAppStat(long long imageId, bool blocked, const std::string& remoteAddr);
+    // Rebuild the rollup from the current (retained) flow_events. Locks mutex()
+    // itself - called at daemon startup, outside the insert path.
+    void rebuildAppStats();
+
 private:
     sqlite3* db_ = nullptr;
     std::mutex mutex_;

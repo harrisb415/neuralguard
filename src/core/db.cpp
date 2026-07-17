@@ -174,7 +174,24 @@ const char* kSchema =
     "  remote_port   INTEGER,"
     "  protocol      INTEGER,"
     "  decision      TEXT,"           // 'allow' | 'once' | 'block' | 'auto-allow'
-    "  label         INTEGER);";      // 0 = benign, 1 = malicious
+    "  label         INTEGER);"       // 0 = benign, 1 = malicious
+    // Per-app rollup, so the Per-app view is O(#apps) instead of aggregating the
+    // whole raw log on every open (which crawled once flow_events hit millions).
+    // Maintained live by the recorder/enforce daemon and rebuilt from the retained
+    // flow_events at startup, so it always reflects the same window the raw log
+    // does. Only image_id-attributed events count - unresolved (kernel/system)
+    // events don't map to an app and are left out here (they're still in Live).
+    "CREATE TABLE IF NOT EXISTS app_stats("
+    "  image_id INTEGER PRIMARY KEY,"
+    "  events   INTEGER NOT NULL DEFAULT 0,"
+    "  blocked  INTEGER NOT NULL DEFAULT 0);"
+    // Distinct destinations per app - a count() can't be maintained incrementally,
+    // so the distinct (app, dest) pairs are kept as a set and counted at read.
+    // Grows with distinct destinations (bounded), not with event volume.
+    "CREATE TABLE IF NOT EXISTS app_dests("
+    "  image_id    INTEGER NOT NULL,"
+    "  remote_addr TEXT NOT NULL,"
+    "  PRIMARY KEY(image_id, remote_addr)) WITHOUT ROWID;";
 }  // namespace
 
 bool Db::open(const char* path) {
@@ -250,6 +267,50 @@ long long Db::purgeFlowEvents(int days) {
     sqlite3_finalize(s);
     if (rc != SQLITE_DONE) return -1;
     return sqlite3_changes(db_);
+}
+
+void Db::recordAppStat(long long imageId, bool blocked, const std::string& remoteAddr) {
+    if (imageId < 0) return;   // unattributed event - not an app row
+    // New distinct destination for this app (INSERT OR IGNORE is a no-op if seen).
+    if (!remoteAddr.empty()) {
+        sqlite3_stmt* s = nullptr;
+        if (sqlite3_prepare_v2(db_,
+                "INSERT OR IGNORE INTO app_dests(image_id, remote_addr) VALUES(?,?);",
+                -1, &s, nullptr) == SQLITE_OK) {
+            sqlite3_bind_int64(s, 1, imageId);
+            bindText(s, 2, remoteAddr);
+            sqlite3_step(s);
+            sqlite3_finalize(s);
+        }
+    }
+    // Bump the event / blocked counters for this app.
+    sqlite3_stmt* s = nullptr;
+    if (sqlite3_prepare_v2(db_,
+            "INSERT INTO app_stats(image_id, events, blocked) VALUES(?,1,?)"
+            " ON CONFLICT(image_id) DO UPDATE SET events=events+1, blocked=blocked+excluded.blocked;",
+            -1, &s, nullptr) == SQLITE_OK) {
+        sqlite3_bind_int64(s, 1, imageId);
+        sqlite3_bind_int(s, 2, blocked ? 1 : 0);
+        sqlite3_step(s);
+        sqlite3_finalize(s);
+    }
+}
+
+void Db::rebuildAppStats() {
+    std::lock_guard<std::mutex> lk(mutex_);
+    sqlite3_exec(db_, "DELETE FROM app_stats; DELETE FROM app_dests;", nullptr, nullptr, nullptr);
+    // Blocked = the same predicate the Per-app view has always used.
+    sqlite3_exec(db_,
+        "INSERT INTO app_stats(image_id, events, blocked)"
+        " SELECT image_id, COUNT(*),"
+        "        SUM(CASE WHEN verdict LIKE '%DROP%' OR verdict='BLOCK' THEN 1 ELSE 0 END)"
+        " FROM flow_events WHERE image_id IS NOT NULL GROUP BY image_id;",
+        nullptr, nullptr, nullptr);
+    sqlite3_exec(db_,
+        "INSERT OR IGNORE INTO app_dests(image_id, remote_addr)"
+        " SELECT DISTINCT image_id, remote_addr FROM flow_events"
+        " WHERE image_id IS NOT NULL AND remote_addr IS NOT NULL AND remote_addr <> '';",
+        nullptr, nullptr, nullptr);
 }
 
 void Db::setMeta(const char* key, const std::string& val) {

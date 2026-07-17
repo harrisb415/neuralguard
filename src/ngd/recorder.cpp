@@ -77,7 +77,13 @@ void Recorder::handleEvent(const void* evOpaque) {
                 if (domain.empty()) sqlite3_bind_null(ins, 11); else bindText(ins, 11, domain);
                 if (dirStr) sqlite3_bind_text(ins, 12, dirStr, -1, SQLITE_STATIC);
                 else        sqlite3_bind_null(ins, 12);
-                if (sqlite3_step(ins) == SQLITE_DONE) ++count_;
+                if (sqlite3_step(ins) == SQLITE_DONE) {
+                    ++count_;
+                    // Fold this logged event into the per-app rollup (still under
+                    // the db lock). blocked = the Per-app view's predicate.
+                    const bool blocked = std::strstr(verdict, "DROP") || std::strcmp(verdict, "BLOCK") == 0;
+                    db_.recordAppStat(idn.id, blocked, remote);
+                }
             }
         }
     }
@@ -118,6 +124,10 @@ bool Recorder::run() {
     long long purged = db_.purgeFlowEvents(ng::kFlowEventsRetentionDays);
     if (purged > 0)
         printf("purged %lld flow_events row(s) older than %d days\n", purged, ng::kFlowEventsRetentionDays);
+    // Rebuild the per-app rollup from the (now retention-trimmed) log, so it
+    // starts consistent with what's actually retained; recordAppStat keeps it
+    // current from here.
+    db_.rebuildAppStats();
 
     sqlite3_stmt* ins = nullptr;
     if (sqlite3_prepare_v2(db_.handle(),

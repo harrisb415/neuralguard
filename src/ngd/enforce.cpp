@@ -186,7 +186,10 @@ void EnforceDaemon::recordEvent(const void* evp) {
                 if (domain.empty()) sqlite3_bind_null(ins, 11); else bindText(ins, 11, domain);
                 if (dirStr) sqlite3_bind_text(ins, 12, dirStr, -1, SQLITE_STATIC);
                 else        sqlite3_bind_null(ins, 12);
-                sqlite3_step(ins);
+                if (sqlite3_step(ins) == SQLITE_DONE) {
+                    const bool blocked = std::strstr(verdict, "DROP") || std::strcmp(verdict, "BLOCK") == 0;
+                    db_.recordAppStat(idn.id, blocked, remote);
+                }
             }
         }
     }
@@ -505,6 +508,7 @@ bool EnforceDaemon::run(int seconds) {
     long long purged = db_.purgeFlowEvents(ng::kFlowEventsRetentionDays);
     if (purged > 0)
         printf("purged %lld flow_events row(s) older than %d days\n", purged, ng::kFlowEventsRetentionDays);
+    db_.rebuildAppStats();   // per-app rollup consistent with the retained log
 
     // Prepare the flow_events insert so enforcement also records the live feed.
     sqlite3_stmt* ins = nullptr;

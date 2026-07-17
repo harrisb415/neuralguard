@@ -20,6 +20,15 @@ and versioning follows [Semantic Versioning](https://semver.org/).
   "Events" tallies now count coalesced activity rather than raw packets, which
   for a firewall dashboard is the more useful number.
 
+- **The Per-app view is now instant regardless of history size.** It used to
+  aggregate the entire raw event log on every open (~2s once the log was large,
+  and getting slower). It now reads a small per-app rollup the service keeps up
+  to date as events arrive, so it's O(number of apps), not O(number of events).
+  Same numbers as before (verified equal to the old query, and the live-maintained
+  rollup verified equal to a from-scratch rebuild). One change: events with no
+  attributable app (kernel/system) no longer appear as a blank row here - they're
+  still in Live.
+
 ### Added
 
 - Retention on the raw log: it's trimmed to 14 days automatically, and
