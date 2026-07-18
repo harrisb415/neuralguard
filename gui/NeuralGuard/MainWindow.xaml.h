@@ -20,6 +20,14 @@ namespace winrt::NeuralGuard::implementation
         void OnRowDoubleTapped(winrt::Windows::Foundation::IInspectable const&,
                                winrt::Microsoft::UI::Xaml::Input::DoubleTappedRoutedEventArgs const&);
         void OnAppDetailBack(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        // Insights jump-links to the tabs that hold the full data.
+        void OnInsEditThresholds(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnInsViewFlags(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        void OnInsViewFlows(winrt::Windows::Foundation::IInspectable const&, winrt::Microsoft::UI::Xaml::RoutedEventArgs const&);
+        // Donut-ring geometry: a rounded arc for `frac` (0..1) of the circle
+        // centered at (cx,cy) radius r, starting at 12 o'clock, clockwise. Set on
+        // a Path's Data (nullptr if frac<=0 so the arc disappears).
+        winrt::Microsoft::UI::Xaml::Media::Geometry RingArc(double frac, double cx, double cy, double r);
         void OnHeaderTap(winrt::Windows::Foundation::IInspectable const&,
                          winrt::Microsoft::UI::Xaml::Input::TappedRoutedEventArgs const&);
         void OnGripPressed(winrt::Windows::Foundation::IInspectable const&,
@@ -65,7 +73,7 @@ namespace winrt::NeuralGuard::implementation
         void RemoveFlag(int64_t id);                               // delete one ml_flags row
         void SetInboundAllowed(int64_t id, bool allowed);          // permit/revoke a blocked inbound service
         void ClearMlFlags();                                       // delete all ml_flags
-        void BuildDigest();                                        // Phase 4f: fill DigestText
+        void BuildInsights();                                      // fill the Insights cards (replaced the text Digest)
         HWND WindowHandle();
         void LoadSettings();
         void ApplyTheme(std::string const& theme);   // 'dark' | 'light' | 'system' -> root RequestedTheme
@@ -85,6 +93,7 @@ namespace winrt::NeuralGuard::implementation
         void SetW(int i, double px);
         void OnTick(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::Foundation::IInspectable const&);
         void ShowView(winrt::hstring const& tag);
+        void NavTo(winrt::hstring const& tag);   // select a sidebar item by tag (jump-links)
         // Drill into a Per-app row's destination breakdown. `row` is the tapped
         // apps row; its C3 is the app label and C0/C1/C2 the events/blocked/dests
         // totals, reused in the detail header so they don't need re-querying.
