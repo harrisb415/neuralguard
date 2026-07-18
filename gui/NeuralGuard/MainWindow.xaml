@@ -259,8 +259,18 @@
                                              Style="{StaticResource NG.RadioButton}" Content="Shadow - score and log only, no effect on rules"/>
                                 <RadioButton x:Name="Ml2" Tag="active" GroupName="mlmode" Checked="OnMlModeChanged"
                                              Style="{StaticResource NG.RadioButton}" Content="Active - a strongly-malicious score can demote a trusted app so it prompts again"/>
-                                <TextBlock Text="Active never auto-blocks: a demoted app simply loses its automatic pass and asks you the next time it connects, exactly like a brand-new app. Only enable this once the models are trained on your own traffic - the shipped models are placeholders. Demotions show under the Flags view."
-                                           Foreground="{ThemeResource NG.Brush.Text.Muted}" TextWrapping="Wrap" FontStyle="Italic" FontSize="11.5" Margin="30,8,0,0" MaxWidth="600" HorizontalAlignment="Left"/>
+                                <Border Background="{ThemeResource NG.Brush.Verdict.Monitor.BG}"
+                                        BorderBrush="{ThemeResource NG.Brush.Verdict.Monitor}" BorderThickness="3,0,0,0"
+                                        CornerRadius="0,8,8,0" Padding="14,12" Margin="30,10,0,0" MaxWidth="600" HorizontalAlignment="Left">
+                                    <Grid ColumnDefinitions="Auto,*">
+                                        <PathIcon Grid.Column="0" Data="M12,2L22,20L2,20Z M11,8L13,8L13,14L11,14Z M11,16L13,16L13,18L11,18Z"
+                                                  Width="15" Height="15" VerticalAlignment="Top" Margin="0,2,10,0"
+                                                  Foreground="{ThemeResource NG.Brush.Verdict.Monitor}"/>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="Active never auto-blocks: a demoted app simply loses its automatic pass and asks you the next time it connects, exactly like a brand-new app. Only enable this once the models are trained on your own traffic - the shipped models are placeholders. Demotions show under the Flags view."
+                                                   Foreground="{ThemeResource NG.Brush.Text.Primary}" TextWrapping="Wrap" FontSize="13"/>
+                                    </Grid>
+                                </Border>
                                 <StackPanel x:Name="GatesPanel" Visibility="Collapsed">
                                     <Border Height="1" Background="{ThemeResource NG.Brush.Border.Subtle}" Margin="0,18"/>
                                     <TextBlock Text="CONFIDENCE GATES (ACTIVE MODE)" Style="{StaticResource NG.Text.SectionHeader}" Margin="0,0,0,4"/>
