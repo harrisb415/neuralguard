@@ -1,44 +1,30 @@
 #include "pch.h"
-#include "MainWindow.xaml.h"
+#include "InsightsView.xaml.h"
+#if __has_include("InsightsView.g.cpp")
+#include "InsightsView.g.cpp"
+#endif
 
 #include "Db.h"
-#include "Row.h"
-#include "ColWidths.h"
-#include "core/updater.h"
-#include "core/version.h"
-#include "SemBrush.h"
-#include "core/cmd.h"
-#include "Tray.h"
-#include "MainWindow.Shared.h"
-
-#include <microsoft.ui.xaml.window.h>
+#include "MainWindow.Shared.h"   // U8
 
 #include <algorithm>
-#include <cctype>
-#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
-#include <ctime>
-#include <string_view>
-#include <thread>
+#include <string>
 
 using namespace winrt;
 using namespace winrt::Windows::Foundation;
 using namespace winrt::Microsoft::UI::Xaml;
 using namespace winrt::Microsoft::UI::Xaml::Controls;
-using namespace winrt::Microsoft::UI::Xaml::Controls::Primitives;
-using namespace winrt::Microsoft::UI::Xaml::Input;
 using namespace winrt::Microsoft::UI::Xaml::Media;
 
 namespace winrt::NeuralGuard::implementation
 {
-
-    // Insights helpers -------------------------------------------------------
-    // Brushes get baked from literal ARGB, not looked up from resources: the
-    // NG.Brush.* live in a *merged* dictionary and code-side lookup misses them
-    // (same reason Row.cpp bakes its pills). XAML ThemeResource still resolves
-    // fine, so only the mode pill (set here) needs this.
+    // Brushes baked from literal ARGB, not looked up from resources: the NG.Brush.*
+    // live in a *merged* dictionary and code-side lookup misses them (same reason
+    // Row.cpp bakes its pills). XAML ThemeResource still resolves fine, so only the
+    // mode pill (set here) needs this.
     static Brush InsArgb(uint8_t a, uint8_t r, uint8_t g, uint8_t b)
     {
         return SolidColorBrush{ winrt::Windows::UI::Color{ a, r, g, b } };
@@ -65,7 +51,9 @@ namespace winrt::NeuralGuard::implementation
         return buf;
     }
 
-    Media::Geometry MainWindow::RingArc(double frac, double cx, double cy, double r)
+    // A rounded arc for `frac` (0..1) of the circle centered at (cx,cy) radius r,
+    // starting at 12 o'clock, clockwise. Set on a ring Path's Data.
+    static Geometry RingArc(double frac, double cx, double cy, double r)
     {
         if (frac <= 0.0) return nullptr;
         if (frac >= 1.0) frac = 0.9999;   // a full 360 sweep degenerates (start == end)
@@ -88,17 +76,25 @@ namespace winrt::NeuralGuard::implementation
         return geo;
     }
 
-    // Insights = the learning/ML summary that replaced the text Digest. Every
-    // number here is advisory and read-only; nothing is enforced from this view.
-    void MainWindow::BuildInsights()
+    void InsightsView::OnEditThresholds(IInspectable const&, RoutedEventArgs const&) { if (navigate_) navigate_(L"settings"); }
+    void InsightsView::OnViewFlags(IInspectable const&, RoutedEventArgs const&) { if (navigate_) navigate_(L"flags"); }
+    void InsightsView::OnViewFlows(IInspectable const&, RoutedEventArgs const&) { if (navigate_) navigate_(L"flows"); }
+
+    // The learning/ML summary. Every number is advisory and read-only; nothing is
+    // enforced from this view.
+    void InsightsView::Refresh(std::string const& dbPath)
     {
         ng::Db d;
-        if (!d.open(DbPathU8().c_str())) return;
+        if (!d.open(dbPath.c_str())) return;
+        auto meta = [&](const char* k, const char* dflt) -> std::string {
+            std::string v = d.scalar(("SELECT v FROM meta WHERE k='" + std::string(k) + "'").c_str());
+            return v.empty() ? std::string(dflt) : v;
+        };
 
         // --- Status: ML mode pill + thresholds ---
-        std::string mode = MetaGet("ml_mode", "shadow");
-        std::string malThr = MetaGet("ml_malicious_threshold", "0.9");
-        std::string anomThr = MetaGet("ml_anomaly_threshold", "-0.15");
+        std::string mode = meta("ml_mode", "shadow");
+        std::string malThr = meta("ml_malicious_threshold", "0.9");
+        std::string anomThr = meta("ml_anomaly_threshold", "-0.15");
         double malThrN = atof(malThr.c_str()), anomThrN = atof(anomThr.c_str());
 
         hstring modeLabel = mode == "active" ? L"ACTIVE" : mode == "off" ? L"OFF" : L"SHADOW";
@@ -112,7 +108,7 @@ namespace winrt::NeuralGuard::implementation
         InsModePill().Background(InsArgb(0x22, mc.R, mc.G, mc.B));
         InsModeText().Text(modeLabel);
         InsModeText().Foreground(modeColor);
-        std::string since = MetaGet("ml_mode_since", "");
+        std::string since = meta("ml_mode_since", "");
         InsModeSince().Text(since.empty() ? hstring(L"\x2014") : U8(InsFriendly(since)));
         InsThreshMal().Text(U8("\xE2\x89\xA5 " + malThr));    // >= (U+2265, UTF-8)
         InsThreshAnom().Text(U8("\xE2\x89\xA4 " + anomThr));  // <= (U+2264, UTF-8)
@@ -229,8 +225,4 @@ namespace winrt::NeuralGuard::implementation
             FeedbackRingArc().Data(RingArc(fbTotal ? (double)fbBen / (double)fbTotal : 0.0, 48, 48, 42));
         });
     }
-
-    void MainWindow::OnInsEditThresholds(IInspectable const&, RoutedEventArgs const&) { NavTo(L"settings"); }
-    void MainWindow::OnInsViewFlags(IInspectable const&, RoutedEventArgs const&) { NavTo(L"flags"); }
-    void MainWindow::OnInsViewFlows(IInspectable const&, RoutedEventArgs const&) { NavTo(L"flows"); }
 }

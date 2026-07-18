@@ -1,0 +1,13 @@
+namespace NeuralGuard
+{
+    // The Insights tab (learning/ML summary), extracted from MainWindow as a
+    // self-contained UserControl. The projected surface is just the ctor - XAML
+    // needs that to instantiate <local:InsightsView>. MainWindow reaches the
+    // implementation's Refresh()/SetNavigate() via winrt::get_self (same project),
+    // so those don't need to cross the ABI here.
+    [default_interface]
+    runtimeclass InsightsView : Microsoft.UI.Xaml.Controls.UserControl
+    {
+        InsightsView();
+    }
+}

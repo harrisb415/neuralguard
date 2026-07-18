@@ -145,10 +145,16 @@
     <ClInclude Include="MainWindow.xaml.h">
       <DependentUpon>MainWindow.xaml</DependentUpon>
     </ClInclude>
+    <ClInclude Include="InsightsView.xaml.h">
+      <DependentUpon>InsightsView.xaml</DependentUpon>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml" />
     <Page Include="MainWindow.xaml" />
+    <Page Include="InsightsView.xaml">
+      <SubType>Designer</SubType>
+    </Page>
     <Page Include="Themes\NeuralGuardColors.xaml" />
     <Page Include="Themes\NeuralGuardStyles.xaml" />
   </ItemGroup>
@@ -168,7 +174,9 @@
     <ClCompile Include="MainWindow.Views.cpp" />
     <ClCompile Include="MainWindow.RowActions.cpp" />
     <ClCompile Include="MainWindow.Settings.cpp" />
-    <ClCompile Include="MainWindow.Insights.cpp" />
+    <ClCompile Include="InsightsView.xaml.cpp">
+      <DependentUpon>InsightsView.xaml</DependentUpon>
+    </ClCompile>
     <ClCompile Include="$(GeneratedFilesDir)module.g.cpp" />
     <ClCompile Include="deps\sqlite3.c">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
@@ -219,6 +227,10 @@
     <Midl Include="MainWindow.idl">
       <SubType>Code</SubType>
       <DependentUpon>MainWindow.xaml</DependentUpon>
+    </Midl>
+    <Midl Include="InsightsView.idl">
+      <SubType>Code</SubType>
+      <DependentUpon>InsightsView.xaml</DependentUpon>
     </Midl>
     <Midl Include="Row.idl">
       <SubType>Code</SubType>

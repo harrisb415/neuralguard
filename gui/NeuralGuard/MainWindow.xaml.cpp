@@ -193,7 +193,14 @@ namespace winrt::NeuralGuard::implementation
         filter_ = L"";
         SearchBox().Text(L"");   // reset the filter when switching views
         if (settings) LoadSettings();
-        else if (insights) BuildInsights();
+        else if (insights)
+        {
+            // The Insights tab is its own UserControl now; reach its impl (same
+            // project) to inject navigation and rebuild its cards from the DB.
+            auto v = winrt::get_self<implementation::InsightsView>(InsightsPanel());
+            v->SetNavigate([this](hstring tag) { NavTo(tag); });
+            v->Refresh(DbPathU8());
+        }
         else
         {
             // Pick the row template for this view - pill badges where verdict/state/

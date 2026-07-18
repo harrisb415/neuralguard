@@ -1,0 +1,220 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="NeuralGuard.InsightsView"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+
+    <!-- The learning/ML summary (replaced the text Digest). Card grid, filled by
+         InsightsView::Refresh(). Rings drawn in code from Path+ArcSegment. -->
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16" Margin="0,2,0,24">
+
+            <!-- Row 1: Status | Habit model | Scoring activity -->
+            <Grid ColumnSpacing="16" ColumnDefinitions="*,*,*">
+
+                <!-- Status -->
+                <Border Grid.Column="0" Style="{StaticResource NG.Card}">
+                    <StackPanel Spacing="16">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="19" VerticalAlignment="Center"
+                                    Background="{ThemeResource NG.Brush.Verdict.CapAllow.BG}">
+                                <PathIcon Data="M12,2L20,5L20,11L12,22L4,11L4,5Z" Width="18" Height="18"
+                                          Foreground="{ThemeResource NG.Brush.Verdict.CapAllow}"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Status" FontSize="17" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="12,0,0,0"/>
+                            <Border Grid.Column="2" x:Name="InsModePill" VerticalAlignment="Center"
+                                    CornerRadius="10" Padding="10,3" BorderThickness="1">
+                                <TextBlock x:Name="InsModePillText" FontSize="12" FontWeight="SemiBold"/>
+                            </Border>
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="ML mode" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="InsModeText" TextAlignment="Right" FontWeight="SemiBold"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Mode since" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="InsModeSince" TextAlignment="Right" Style="{StaticResource NG.Text.Secondary}"/>
+                        </Grid>
+                        <Border Height="1" Background="{ThemeResource NG.Brush.Border.Subtle}"/>
+                        <TextBlock Text="Active thresholds" Style="{StaticResource NG.Text.SectionHeader}"/>
+                        <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto" RowSpacing="6">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Malicious (demote)" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="InsThreshMal" TextAlignment="Right"
+                                       FontWeight="SemiBold" Foreground="{ThemeResource NG.Brush.Verdict.Block}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Anomalous (review)" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="InsThreshAnom" TextAlignment="Right"
+                                       FontWeight="SemiBold" Foreground="{ThemeResource NG.Brush.Verdict.Monitor}"/>
+                        </Grid>
+                        <HyperlinkButton Content="Edit thresholds &#x2192;" Click="OnEditThresholds"
+                                         HorizontalAlignment="Right" Padding="0,2"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Habit model -->
+                <Border Grid.Column="1" Style="{StaticResource NG.Card}">
+                    <StackPanel Spacing="16">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="19" VerticalAlignment="Center"
+                                    Background="{ThemeResource NG.Brush.CyanSubtle}">
+                                <PathIcon Data="M18.89,6.21L20.46,8.92L21,12L20.46,15.08L18.89,17.79L16.5,19.79L13.56,20.86L10.44,20.86L7.5,19.79L5.11,17.79L3.54,15.08L3,12L3.54,8.92L7.4,8.14L6.36,9.95L6,12L6.36,14.05L7.4,15.86L9,17.2L10.96,17.91L13.04,17.91L15,17.2L16.6,15.86L17.64,14.05L18,12L17.64,9.95Z"
+                                          Width="18" Height="18" Foreground="{ThemeResource NG.Brush.Cyan}"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Habit model" FontSize="17" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto,Auto" RowSpacing="12">
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Total habits" Style="{StaticResource NG.Text.Secondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" x:Name="InsHabits" FontSize="20" FontWeight="SemiBold" Text="0"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Distinct apps" Style="{StaticResource NG.Text.Secondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" x:Name="InsApps" FontSize="20" FontWeight="SemiBold" Text="0"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Distinct destinations" Style="{StaticResource NG.Text.Secondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" x:Name="InsDests" FontSize="20" FontWeight="SemiBold" Text="0"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="New habits (last 7 days)" Style="{StaticResource NG.Text.Secondary}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" x:Name="InsNew7" FontSize="20" FontWeight="SemiBold"
+                                       Text="0" Foreground="{ThemeResource NG.Brush.Verdict.Allow}"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Scoring activity -->
+                <Border Grid.Column="2" Style="{StaticResource NG.Card}">
+                    <StackPanel Spacing="16">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="19" VerticalAlignment="Center"
+                                    Background="{ThemeResource NG.Brush.Verdict.Allow.BG}">
+                                <PathIcon Data="M3,13L7,13L7,21L3,21Z M10,8L14,8L14,21L10,21Z M17,3L21,3L21,21L17,21Z"
+                                          Width="17" Height="17" Foreground="{ThemeResource NG.Brush.Verdict.Allow}"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Scoring activity" FontSize="17" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="12,0,0,0"/>
+                        </Grid>
+                        <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                                <TextBlock Text="Total flows scored" Style="{StaticResource NG.Text.Secondary}"/>
+                                <TextBlock x:Name="InsFlowsTotal" FontSize="28" FontWeight="SemiBold" Text="0"/>
+                            </StackPanel>
+                            <Grid Grid.Column="1" Width="112" Height="112">
+                                <Ellipse Width="100" Height="100" StrokeThickness="12"
+                                         Stroke="{ThemeResource NG.Brush.BG.Elevated}"/>
+                                <Path x:Name="ScoreRingArc" StrokeThickness="12" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                      Stroke="{ThemeResource NG.Brush.Cyan}"/>
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock x:Name="InsScoredPct" FontSize="17" FontWeight="SemiBold" TextAlignment="Center" Text="0%"/>
+                                    <TextBlock Text="Scored" FontSize="11" TextAlignment="Center" Style="{StaticResource NG.Text.Secondary}"/>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
+                        <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto,Auto" RowSpacing="7">
+                            <Ellipse Grid.Row="0" Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" Fill="{ThemeResource NG.Brush.Verdict.Block}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Text="Would demote (malicious)" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" x:Name="InsScDemote" FontWeight="SemiBold" Text="0"/>
+                            <Ellipse Grid.Row="1" Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" Fill="{ThemeResource NG.Brush.Verdict.Monitor}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Text="Would review (anomalous)" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" x:Name="InsScReview" FontWeight="SemiBold" Text="0"/>
+                            <Ellipse Grid.Row="2" Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center" Margin="0,0,8,0" Fill="{ThemeResource NG.Brush.Text.Muted}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Text="Unscored" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" x:Name="InsScUnscored" FontWeight="SemiBold" Text="0"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Row 2: Demotions & review flags | Top flagged -->
+            <Grid ColumnSpacing="16" ColumnDefinitions="1*,2*">
+
+                <!-- Demotions & review flags -->
+                <Border Grid.Column="0" Style="{StaticResource NG.Card}">
+                    <StackPanel Spacing="16">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="19" VerticalAlignment="Center"
+                                    Background="{ThemeResource NG.Brush.Verdict.Monitor.BG}">
+                                <PathIcon Data="M4,2L6.4,2L6.4,22L4,22Z M6.4,3L20,7L6.4,11Z" Width="17" Height="17"
+                                          Foreground="{ThemeResource NG.Brush.Verdict.Monitor}"/>
+                            </Border>
+                            <TextBlock Grid.Column="1" Text="Demotions &amp; review flags" FontSize="17" FontWeight="SemiBold"
+                                       VerticalAlignment="Center" Margin="12,0,0,0" TextWrapping="Wrap"/>
+                        </Grid>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Active demotions" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock x:Name="InsDemotions" FontSize="30" FontWeight="SemiBold" Text="0"/>
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="Review flags" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock x:Name="InsReviewFlags" FontSize="30" FontWeight="SemiBold" Text="0"/>
+                        </StackPanel>
+                        <HyperlinkButton Content="View all flags &amp; demotions &#x2192;" Click="OnViewFlags"
+                                         HorizontalAlignment="Left" Padding="0,2"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Top flagged right now -->
+                <Border Grid.Column="1" Style="{StaticResource NG.Card}">
+                    <StackPanel Spacing="14">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Border Grid.Column="0" Width="38" Height="38" CornerRadius="19" VerticalAlignment="Center"
+                                    Background="{ThemeResource NG.Brush.Verdict.Block.BG}">
+                                <PathIcon Data="M12,2L22,20L2,20Z M11,8L13,8L13,14L11,14Z M11,16L13,16L13,18L11,18Z"
+                                          Width="17" Height="17" Foreground="{ThemeResource NG.Brush.Verdict.Block}"/>
+                            </Border>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+                                <TextBlock Text="Top flagged right now" FontSize="17" FontWeight="SemiBold" VerticalAlignment="Bottom"/>
+                                <TextBlock Text="(recent)" Style="{StaticResource NG.Text.Muted}" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid ColumnDefinitions="88,*,180,110,64">
+                            <TextBlock Grid.Column="0" Text="Time" Style="{StaticResource NG.Text.SectionHeader}"/>
+                            <TextBlock Grid.Column="1" Text="App" Style="{StaticResource NG.Text.SectionHeader}"/>
+                            <TextBlock Grid.Column="2" Text="Destination" Style="{StaticResource NG.Text.SectionHeader}"/>
+                            <TextBlock Grid.Column="3" Text="Reason" Style="{StaticResource NG.Text.SectionHeader}"/>
+                            <TextBlock Grid.Column="4" Text="Score" Style="{StaticResource NG.Text.SectionHeader}" TextAlignment="Right"/>
+                        </Grid>
+                        <StackPanel x:Name="InsTopFlagged" Spacing="0"/>
+                        <HyperlinkButton Content="See all flags &amp; flows &#x2192;" Click="OnViewFlows"
+                                         HorizontalAlignment="Right" Padding="0,2"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+
+            <!-- Row 3: Feedback loop -->
+            <Border Style="{StaticResource NG.Card}">
+                <StackPanel Spacing="16">
+                    <Grid ColumnDefinitions="Auto,*">
+                        <Border Grid.Column="0" Width="38" Height="38" CornerRadius="19" VerticalAlignment="Center"
+                                Background="{ThemeResource NG.Brush.Verdict.Allow.BG}">
+                            <PathIcon Data="M3,3L21,3L21,16L3,16Z M7,16L13,16L7,21Z" Width="17" Height="17"
+                                      Foreground="{ThemeResource NG.Brush.Verdict.Allow}"/>
+                        </Border>
+                        <TextBlock Grid.Column="1" Text="Feedback loop" FontSize="17" FontWeight="SemiBold"
+                                   VerticalAlignment="Center" Margin="12,0,0,0"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto" ColumnSpacing="40">
+                        <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="Total labeled decisions" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock x:Name="InsFbTotal" FontSize="30" FontWeight="SemiBold" Text="0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="Benign" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock x:Name="InsFbBenign" FontSize="20" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource NG.Brush.Verdict.Allow}" Text="0"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="2" Spacing="2" VerticalAlignment="Center">
+                            <TextBlock Text="Malicious" Style="{StaticResource NG.Text.Secondary}"/>
+                            <TextBlock x:Name="InsFbMalicious" FontSize="20" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource NG.Brush.Verdict.Block}" Text="0"/>
+                        </StackPanel>
+                        <Grid Grid.Column="4" Width="96" Height="96">
+                            <Ellipse Width="84" Height="84" StrokeThickness="11"
+                                     Stroke="{ThemeResource NG.Brush.Verdict.Block}"/>
+                            <Path x:Name="FeedbackRingArc" StrokeThickness="11" StrokeStartLineCap="Round" StrokeEndLineCap="Round"
+                                  Stroke="{ThemeResource NG.Brush.Verdict.Allow}"/>
+                        </Grid>
+                    </Grid>
+                    <TextBlock Text="Advisory only. Nothing here is enforced on its own."
+                               Style="{StaticResource NG.Text.Muted}" FontStyle="Italic"/>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
