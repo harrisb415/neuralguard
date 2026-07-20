@@ -5,6 +5,33 @@ All notable changes to NeuralGuard are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-07-20
+
+### Fixed
+
+- **The ML pipeline was dead when run as a service** (i.e. for everyone). The
+  background feature collector was only started by the `ngd record`/`enforce`
+  CLI, never by the Windows service, so the `flow_features` table the ML tier
+  learns from never grew. It now collects while the service runs, in both
+  learning and enforcing modes.
+
+### Added
+
+- **The anomaly detector trains itself on your own traffic** - no external
+  tools, no Python, nothing to download. It spends an initial learning window
+  building a baseline of your normal connections, then activates automatically
+  and keeps adapting. Under the hood this is a native on-device Isolation
+  Forest (the anomaly tier no longer needs the ONNX runtime at all).
+  - A new **Anomaly model** card in Settings shows the learning progress
+    ("N of M days, X flows"), lets you choose the **adaptation window** (7-30
+    days, with on-screen guidance on the tradeoff), toggle automatic training,
+    and retrain on demand.
+  - The window is both the initial learning period and a rolling window the
+    model **re-trains on each night**, so it tracks your habits as they change.
+    Retraining deliberately excludes anything the model flagged as anomalous, so
+    a slow-drifting threat can't be normalized into "normal."
+  - `ngd train-anomaly` / `ngd score-dump` for manual training and inspection.
+
 ## [1.5.9] - 2026-07-18
 
 ### Added
