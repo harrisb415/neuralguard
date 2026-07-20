@@ -3,6 +3,7 @@
 #include "core/db.h"
 #include "core/dns.h"
 #include "core/enforcer.h"
+#include "core/flowstats.h"
 #include "core/habit.h"
 #include "core/identity.h"
 #include "core/cmd.h"
@@ -25,8 +26,51 @@ SERVICE_STATUS_HANDLE g_ssh = nullptr;
 SERVICE_STATUS g_ss{};
 EnforceDaemon* g_daemon = nullptr;
 Recorder* g_recorder = nullptr;
+FlowCollector* g_collector = nullptr;   // Phase-4 feature archival, runs alongside the mode
 HANDLE g_idleStop = nullptr;   // signalled to break the 'idle' mode's wait
 std::string g_dbPath = "ngpolicy.db";
+
+// Feature archival helpers (mirror main.cpp's for the CLI record/enforce paths).
+// The service used to run the mode WITHOUT the collector, so flow_features never
+// grew for anyone running NeuralGuard as a service - only manual `ngd record`/
+// `ngd features` sessions collected. That starved the Phase-4 ML pipeline.
+bool FeatureArchiveOn(Db& db) { return db.meta("feature_archive", "0") == "1"; }
+
+std::string ModelPathFor(const char* name) {
+    size_t s = g_dbPath.find_last_of("\\/");
+    std::string dir = (s == std::string::npos) ? "." : g_dbPath.substr(0, s);
+    return dir + "\\" + name;
+}
+
+void MaybeEnableScoring(FlowCollector& collector, Db& db) {
+    std::string mode = db.meta("ml_mode", "shadow");
+    if (mode != "off")
+        collector.enableScoring(ModelPathFor("anomaly.onnx"), ModelPathFor("supervised.onnx"),
+                                mode == "active");
+}
+
+// Run `body` (the blocking recorder/daemon) with the feature collector archiving
+// completed flows alongside it, when feature_archive is on. Collection happens
+// regardless of whether a model exists - scoring just fills in the score columns
+// if one is present, so this accumulates training data even before any model.
+template <class Body>
+bool WithCollector(Db& db, IdentityResolver& resolver, DnsWatcher& dns, Body&& body) {
+    FlowCollector collector(db, resolver, &dns);
+    MaybeEnableScoring(collector, db);
+    std::thread featThread;
+    const bool feat = FeatureArchiveOn(db);
+    if (feat) {
+        g_collector = &collector;
+        featThread = std::thread([&collector] { collector.run(0); });
+    }
+    const bool ok = body();
+    if (feat) {
+        collector.stop();
+        if (featThread.joinable()) featThread.join();
+        g_collector = nullptr;
+    }
+    return ok;
+}
 
 // Two different reasons the currently-running mode gets told to return, and the
 // mode loop has to tell them apart: the SCM is stopping us for good, versus a
@@ -141,7 +185,9 @@ bool RunOneMode(const std::string& desired, Db& db, IdentityResolver& resolver,
         g_recorder = &recorder;
         SetMetaMode(db, "learning");
         SetState(SERVICE_RUNNING);
-        const bool ok = recorder.run();   // blocks: records every event, enforces nothing
+        const bool ok = WithCollector(db, resolver, dns, [&] {
+            return recorder.run();   // blocks: records every event, enforces nothing
+        });
         g_recorder = nullptr;
         return ok;
     }
@@ -151,7 +197,9 @@ bool RunOneMode(const std::string& desired, Db& db, IdentityResolver& resolver,
     g_daemon = &daemon;
     SetMetaMode(db, "enforcing");
     SetState(SERVICE_RUNNING);
-    const bool ok = daemon.run(0);   // blocks: baseline + default-deny + rules + prompts
+    const bool ok = WithCollector(db, resolver, dns, [&] {
+        return daemon.run(0);   // blocks: baseline + default-deny + rules + prompts
+    });
     g_daemon = nullptr;
     return ok;
 }
